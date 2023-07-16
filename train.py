@@ -1,10 +1,3 @@
-"""
-Train a model to predict the classfication of a given image.
-Get the training data from the subdirectories of the given directory.
-The subdirectory name is the label of the image.
-Uses PyTorch to train the model.
-"""
-
 import argparse
 import logging
 import os
