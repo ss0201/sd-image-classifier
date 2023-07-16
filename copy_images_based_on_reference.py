@@ -99,7 +99,7 @@ def main():
         required=True,
     )
     dirs_group.add_argument(
-        "--reference_dirs",
+        "--ref_dirs",
         type=str,
         nargs="+",
         help="Directories containing the reference images.",
@@ -118,7 +118,7 @@ def main():
     logging.info(f"Copying files from {args.src_dir} to {args.work_dir}...")
 
     copy_src_files_to_work_dir_based_on_reference(
-        Path(args.work_dir), Path(args.src_dir), args.reference_dirs, args.threshold
+        Path(args.work_dir), Path(args.src_dir), args.ref_dirs, args.threshold
     )
 
     logging.info("Done.")
