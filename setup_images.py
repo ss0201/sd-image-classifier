@@ -76,27 +76,36 @@ def copy_src_files_to_work_dir(work_dir, src_dir, train_dirs, similarity_thresho
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Setup images for training.")
+    parser = argparse.ArgumentParser(
+        description="Copy source images to training directories based on similarity.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
     dirs_group = parser.add_argument_group("dirs")
     dirs_group.add_argument(
         "--work_dir",
         type=str,
-        default="work_dir",
-        help="Working directory.",
+        help="Working directory to copy the images to.",
         required=True,
     )
     dirs_group.add_argument(
-        "--src_dir", type=str, default="all", help="Source directory.", required=True
+        "--src_dir",
+        type=str,
+        help="Directory containing the source images.",
+        required=True,
     )
     dirs_group.add_argument(
-        "--train_dirs", type=str, nargs="+", help="Training directories.", required=True
+        "--train_dirs",
+        type=str,
+        nargs="+",
+        help="Directories containing the training images.",
+        required=True,
     )
-    parser.add_argument("--log_level", type=str, default="INFO", help="Log level.")
+    parser.add_argument("--log_level", type=str, default="INFO", help="Logging level.")
     parser.add_argument(
         "--threshold",
         type=float,
         default=0.5,
-        help="Similarity threshold for images (0-1). (default: 0.5)",
+        help="Similarity threshold for images (0-1).",
     )
     args = parser.parse_args()
 
