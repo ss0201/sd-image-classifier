@@ -1,25 +1,33 @@
 import argparse
 import logging
-import math
 import operator
 import os
 import shutil
 from functools import reduce
 from pathlib import Path
 
-import PIL.ImageChops
-from PIL import Image
+from PIL import Image, ImageChops, ImageOps
 
 
 def calc_image_similarity(file1, file2):
     im1 = Image.open(file1)
     im2 = Image.open(file2)
-    histogram = PIL.ImageChops.difference(im1, im2).histogram()
+    im1 = ImageOps.grayscale(im1)
+    im2 = ImageOps.grayscale(im2)
+    histogram = ImageChops.difference(im1, im2).histogram()
+
     zero_diff_ratio = histogram[0] / reduce(operator.add, histogram)
     return zero_diff_ratio
 
 
 def find_matching_train_dir(file_path, train_dirs):
+    for train_dir in train_dirs:
+        train_file_path = os.path.join(train_dir, os.path.basename(file_path))
+        if os.path.exists(train_file_path):
+            similarity = calc_image_similarity(file_path, train_file_path)
+            if similarity > 0.5:
+                return train_dir
+
     for train_dir in train_dirs:
         for train_file in os.listdir(train_dir):
             train_file_path = os.path.join(train_dir, train_file)
@@ -64,10 +72,10 @@ def main():
     dirs_group.add_argument(
         "--train_dirs", type=str, nargs="+", help="Training directories.", required=True
     )
-
+    parser.add_argument("--log_level", type=str, default="INFO", help="Log level.")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=args.log_level.upper())
     logging.info(f"Copying files from {args.src_dir} to {args.work_dir}...")
 
     copy_src_files_to_work_dir(Path(args.work_dir), Path(args.src_dir), args.train_dirs)
