@@ -87,19 +87,19 @@ def main():
     )
     dirs_group = parser.add_argument_group("dirs")
     dirs_group.add_argument(
-        "--work_dir",
+        "--work-dir",
         type=str,
         help="Working directory to copy the images to.",
         required=True,
     )
     dirs_group.add_argument(
-        "--src_dir",
+        "--src-dir",
         type=str,
         help="Directory containing the source images.",
         required=True,
     )
     dirs_group.add_argument(
-        "--ref_dirs",
+        "--ref-dirs",
         type=str,
         nargs="+",
         help="Directories containing the reference images.",

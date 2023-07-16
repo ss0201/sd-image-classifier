@@ -53,7 +53,13 @@ def train(data_dir, model_dir, epochs, batch_size):
             if i % 100 == 0:
                 logging.info(f"Step {i} - loss: {loss.item()}")
 
-    torch.save(model.state_dict(), os.path.join(model_dir, "model.pt"))
+    torch.save(
+        {
+            "model_state_dict": model.state_dict(),
+            "labels": train_dataset.classes,
+        },
+        os.path.join(model_dir, "model.pt"),
+    )
 
 
 def main():
@@ -61,13 +67,13 @@ def main():
         description="Train a model to predict the classfication of a given image."
     )
     parser.add_argument(
-        "--data_dir",
+        "--data-dir",
         type=str,
         help="Directory containing the training data.",
         required=True,
     )
     parser.add_argument(
-        "--model_dir",
+        "--model-dir",
         type=str,
         help="Directory to save the trained model.",
         required=True,
@@ -79,7 +85,7 @@ def main():
         default=10,
     )
     parser.add_argument(
-        "--batch_size",
+        "--batch-size",
         type=int,
         help="Number of images per batch.",
         default=32,
