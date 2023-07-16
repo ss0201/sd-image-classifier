@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+from typing import cast
 
 import torch
 import torchvision.transforms as transforms
@@ -34,12 +35,12 @@ def classify(data_dir, model, labels, device):
 
     for file in os.listdir(data_dir):
         image = Image.open(os.path.join(data_dir, file))
-        image = transform(image)
-        image = image.unsqueeze(0)
+        image_tensor = cast(torch.Tensor, transform(image))
+        image_tensor = torch.unsqueeze(image_tensor, 0)
 
         with torch.no_grad():
-            image = image.to(device)
-            outputs = model(image)
+            image_tensor = image_tensor.to(device)
+            outputs = model(image_tensor)
             _, predicted = torch.max(outputs.data, 1)
             label_name = labels[predicted[0]]
 
