@@ -21,6 +21,7 @@ def load_model(model_path: str, device: torch.device) -> Tuple[nn.Module, List[s
     return model, labels
 
 
+@torch.no_grad()
 def classify(
     data_dir: str, model: nn.Module, labels: List[str], device: torch.device
 ) -> None:
@@ -40,16 +41,15 @@ def classify(
         image_tensor = cast(torch.Tensor, transform(image))
         image_tensor = torch.unsqueeze(image_tensor, 0)
 
-        with torch.no_grad():
-            image_tensor = image_tensor.to(device)
-            outputs: torch.Tensor = model(image_tensor)
-            _, predicted = torch.max(outputs.data, 1)
-            label_name = labels[predicted[0]]
-            likelihoods = nn.functional.softmax(outputs, dim=1)[0]
-            logging.info(file)
-            for i, label in enumerate(labels):
-                logging.info(f"{label}: {likelihoods[i]:.4f}")
-            logging.info(f"Predicted class: {label_name}")
+        image_tensor = image_tensor.to(device)
+        outputs: torch.Tensor = model(image_tensor)
+        _, predicted = torch.max(outputs.data, 1)
+        label_name = labels[predicted[0]]
+        likelihoods = nn.functional.softmax(outputs, dim=1)[0]
+        logging.info(file)
+        logging.info(f"[{label_name}]")
+        for i, label in enumerate(labels):
+            logging.info(f"{label}: {likelihoods[i]:.4f}")
 
 
 def main() -> None:
