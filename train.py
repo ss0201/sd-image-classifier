@@ -11,7 +11,7 @@ from torch import nn, optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import datasets, models, transforms
-from torchvision.models import ResNet50_Weights
+from torchvision.models import EfficientNet_V2_M_Weights
 
 
 def train(
@@ -104,8 +104,11 @@ def get_dataloaders(
 
 
 def get_model(device: torch.device, num_classes: int) -> nn.Module:
-    model = models.resnet50(weights=ResNet50_Weights.DEFAULT)
-    model.fc = nn.Linear(model.fc.in_features, num_classes)
+    model = models.efficientnet_v2_m(weights=EfficientNet_V2_M_Weights.DEFAULT)
+    model.classifier = nn.Sequential(
+        nn.Dropout(0.3),
+        nn.Linear(1280, num_classes),
+    )
     model = model.to(device)
 
     return model
@@ -188,7 +191,7 @@ def save_model(
     torch.save(
         {
             "model_state_dict": model.state_dict(),
-            "labels": full_dataset.classes,
+            "classes": full_dataset.classes,
         },
         os.path.join(model_dir, "model.pt"),
     )

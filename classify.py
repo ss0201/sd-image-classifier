@@ -8,23 +8,27 @@ import torchvision.transforms as transforms
 from PIL import Image
 from torch import nn
 from torchvision import models
-from torchvision.models import ResNet50_Weights
+from torchvision.models import EfficientNet_V2_M_Weights
 
 
 def load_model(model_path: str, device: torch.device) -> Tuple[nn.Module, List[str]]:
     params = torch.load(model_path, map_location=device)
     model_state_dict = params["model_state_dict"]
-    labels = params["labels"]
-    model = models.resnet50(weights=ResNet50_Weights.DEFAULT).to(device)
-    model.fc = nn.Linear(2048, len(labels)).to(device)
+    classes = params["labels"]
+    model = models.efficientnet_v2_m(weights=EfficientNet_V2_M_Weights.DEFAULT)
+    model.classifier = nn.Sequential(
+        nn.Dropout(0.3),
+        nn.Linear(1280, len(classes)),
+    )
     model.load_state_dict(model_state_dict)
     model.eval()
-    return model, labels
+    model = model.to(device)
+    return model, classes
 
 
 @torch.no_grad()
 def classify(
-    data_dir: str, model: nn.Module, labels: List[str], device: torch.device
+    data_dir: str, model: nn.Module, classes: List[str], device: torch.device
 ) -> None:
     transform = transforms.Compose(
         [
@@ -45,12 +49,12 @@ def classify(
         image_tensor = image_tensor.to(device)
         outputs: torch.Tensor = model(image_tensor)
         _, predicted = torch.max(outputs.data, 1)
-        label_name = labels[predicted[0]]
+        class_name = classes[predicted[0]]
         likelihoods = nn.functional.softmax(outputs, dim=1)[0]
         logging.info(file)
-        logging.info(f"-> {label_name}")
-        for i, label in enumerate(labels):
-            logging.info(f"{label}: {likelihoods[i]:.4f}")
+        logging.info(f"  -> {class_name}")
+        for i, label in enumerate(classes):
+            logging.info(f"  {label}: {likelihoods[i]:.4f}")
 
 
 def main() -> None:
@@ -78,8 +82,8 @@ def main() -> None:
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logging.info(f"Using device {device}.")
 
-    model, labels = load_model(args.model, device)
-    classify(args.data_dir, model, labels, device)
+    model, classes = load_model(args.model, device)
+    classify(args.data_dir, model, classes, device)
 
 
 if __name__ == "__main__":
