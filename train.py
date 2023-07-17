@@ -101,7 +101,7 @@ def get_model(device: torch.device, num_classes: int) -> nn.Module:
 def get_criterion(
     device: torch.device, full_dataset: datasets.ImageFolder
 ) -> nn.CrossEntropyLoss:
-    class_count = [0, 0, 0]
+    class_count = [0] * len(full_dataset.classes)
     for _, class_idx in full_dataset:
         class_count[class_idx] += 1
     class_weights = 1.0 / torch.tensor(class_count, dtype=torch.float)
