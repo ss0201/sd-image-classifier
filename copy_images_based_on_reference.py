@@ -60,13 +60,14 @@ def find_matching_reference_file(
 
 
 def process_file(
-    src_file, work_dir, src_dir, reference_dirs, similarity_threshold, file_cache
+    src_file,
+    work_dir,
+    src_dir,
+    reference_dirs,
+    similarity_threshold,
+    file_cache,
+    processed_dirs,
 ):
-    processed_dirs = [
-        os.path.join(work_dir, dir_name)
-        for dir_name in [os.path.basename(ref_dir) for ref_dir in reference_dirs]
-        + [UNMATCHED_DIR_NAME]
-    ]
     if any(
         src_file in file_cache[processed_dir]
         for processed_dir in processed_dirs
@@ -102,7 +103,13 @@ def copy_src_files_to_work_dir_based_on_reference(
     if not enable_image_cache:
         process_image.cache_clear()
 
-    file_cache = build_file_cache([src_dir, work_dir] + reference_dirs)
+    processed_dirs = [
+        os.path.join(work_dir, dir_name)
+        for dir_name in [os.path.basename(ref_dir) for ref_dir in reference_dirs]
+        + [UNMATCHED_DIR_NAME]
+    ]
+
+    file_cache = build_file_cache([src_dir] + processed_dirs + reference_dirs)
 
     with multiprocessing.Pool() as pool:
         pool.starmap(
@@ -115,6 +122,7 @@ def copy_src_files_to_work_dir_based_on_reference(
                     reference_dirs,
                     similarity_threshold,
                     file_cache,
+                    processed_dirs,
                 )
                 for src_file in os.listdir(src_dir)
             ],
