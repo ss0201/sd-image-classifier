@@ -54,7 +54,8 @@ def classify(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Classify the data in the given directory using the trained model."
+        description="Classify the data in the given directory using the trained model.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
     parser.add_argument(

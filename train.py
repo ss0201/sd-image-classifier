@@ -194,7 +194,8 @@ def save_model(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Train a model to predict the classification of a given image."
+        description="Train a model to predict the classification of a given image.",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
         "--data-dir",
