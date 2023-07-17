@@ -1,10 +1,9 @@
 import argparse
 import logging
 import multiprocessing
-import operator
 import os
 import shutil
-from functools import lru_cache, reduce
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
