@@ -16,7 +16,6 @@ def train(data_dir, model_dir, epochs, batch_size):
     train_transform = torchvision.transforms.Compose(
         [
             torchvision.transforms.RandomHorizontalFlip(),
-            torchvision.transforms.RandomRotation(10),
             torchvision.transforms.Resize((224, 224)),
             torchvision.transforms.ToTensor(),
             torchvision.transforms.Normalize(
@@ -57,11 +56,23 @@ def train(data_dir, model_dir, epochs, batch_size):
         val_dataset, batch_size=batch_size, shuffle=True
     )
 
-    model = torchvision.models.resnet50(pretrained=True)
+    model = torchvision.models.resnet50(
+        weights=torchvision.models.ResNet50_Weights.DEFAULT
+    )
     model.fc = torch.nn.Linear(model.fc.in_features, len(full_dataset.classes))
     model = model.to(device)
 
-    criterion = torch.nn.CrossEntropyLoss()
+    class_count = [
+        0,
+        0,
+        0,
+    ]
+    for _, class_idx in full_dataset:
+        class_count[class_idx] += 1
+    class_weights = 1.0 / torch.tensor(class_count, dtype=torch.float)
+    class_weights_normalized = (class_weights / class_weights.sum()).to(device)
+
+    criterion = torch.nn.CrossEntropyLoss(weight=class_weights_normalized)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.1, patience=10
