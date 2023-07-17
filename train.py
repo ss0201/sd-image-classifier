@@ -83,10 +83,12 @@ def get_datasets(
         val_indices = cast(List[int], val_indices)
         train_subset = Subset(full_dataset, train_indices)
         val_subset = Subset(full_dataset, val_indices)
+
         train_subset.dataset = cast(datasets.ImageFolder, train_subset.dataset)
         val_subset.dataset = cast(datasets.ImageFolder, val_subset.dataset)
         train_subset.dataset.transform = train_transform
         val_subset.dataset.transform = val_transform
+
         folds.append((train_subset, val_subset))
 
     return folds

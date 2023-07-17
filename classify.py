@@ -8,13 +8,14 @@ import torchvision.transforms as transforms
 from PIL import Image
 from torch import nn
 from torchvision import models
+from torchvision.models import ResNet50_Weights
 
 
 def load_model(model_path: str, device: torch.device) -> Tuple[nn.Module, List[str]]:
     params = torch.load(model_path, map_location=device)
     model_state_dict = params["model_state_dict"]
     labels = params["labels"]
-    model = models.resnet50(pretrained=True).to(device)
+    model = models.resnet50(weights=ResNet50_Weights.DEFAULT).to(device)
     model.fc = nn.Linear(2048, len(labels)).to(device)
     model.load_state_dict(model_state_dict)
     model.eval()
