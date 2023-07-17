@@ -31,7 +31,8 @@ def calc_image_similarity(file1, file2):
 def build_file_cache(dirs):
     cache = {}
     for dir in dirs:
-        cache[dir] = set(os.listdir(dir))
+        if os.path.isdir(dir):
+            cache[dir] = set(os.listdir(dir))
     return cache
 
 
