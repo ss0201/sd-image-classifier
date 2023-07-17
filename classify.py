@@ -13,7 +13,7 @@ from util import create_model, get_device, get_val_transform
 def load_model(model_path: str, device: torch.device) -> Tuple[nn.Module, List[str]]:
     params = torch.load(model_path, map_location=device)
     model_state_dict = params["model_state_dict"]
-    classes = params["labels"]
+    classes = params["classes"]
     model = create_model(device, len(classes))
     model.load_state_dict(model_state_dict)
     model.eval()
@@ -38,8 +38,8 @@ def classify(
         likelihoods = nn.functional.softmax(outputs, dim=1)[0]
         logging.info(file)
         logging.info(f"  -> {class_name}")
-        for i, label in enumerate(classes):
-            logging.info(f"  {label}: {likelihoods[i]:.4f}")
+        for i, cls in enumerate(classes):
+            logging.info(f"  {cls}: {likelihoods[i]:.4f}")
 
 
 def main() -> None:
