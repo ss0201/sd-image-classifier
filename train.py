@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import sys
+from typing import cast
 
 import torch
 import torch.utils.data
@@ -12,34 +13,64 @@ def train(data_dir, model_dir, epochs, batch_size):
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logging.info(f"Using device {device}.")
 
-    train_dataset = torchvision.datasets.ImageFolder(data_dir)
-
-    transform = torchvision.transforms.Compose(
+    train_transform = torchvision.transforms.Compose(
         [
+            torchvision.transforms.RandomHorizontalFlip(),
+            torchvision.transforms.RandomRotation(10),
             torchvision.transforms.Resize((224, 224)),
             torchvision.transforms.ToTensor(),
             torchvision.transforms.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225],
+                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
             ),
         ]
     )
 
-    train_dataset.transform = transform
+    val_transform = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.Resize((224, 224)),
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Normalize(
+                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
+            ),
+        ]
+    )
+
+    full_dataset = torchvision.datasets.ImageFolder(data_dir)
+    train_size = int(0.8 * len(full_dataset))
+    test_size = len(full_dataset) - train_size
+    train_dataset, val_dataset = torch.utils.data.random_split(
+        full_dataset, [train_size, test_size]
+    )
+    train_dataset_image_folder = cast(
+        torchvision.datasets.ImageFolder, train_dataset.dataset
+    )
+    val_dataset_image_folder = cast(
+        torchvision.datasets.ImageFolder, val_dataset.dataset
+    )
+    train_dataset_image_folder.transform = train_transform
+    val_dataset_image_folder.transform = val_transform
+
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True
     )
+    val_dataloader = torch.utils.data.DataLoader(
+        val_dataset, batch_size=batch_size, shuffle=True
+    )
 
-    model = torchvision.models.resnet18(pretrained=True)
-    model.fc = torch.nn.Linear(model.fc.in_features, len(train_dataset.classes))
+    model = torchvision.models.resnet50(pretrained=True)
+    model.fc = torch.nn.Linear(model.fc.in_features, len(full_dataset.classes))
     model = model.to(device)
 
     criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode="min", factor=0.1, patience=10
+    )
 
     for epoch in range(epochs):
         logging.info(f"Starting epoch {epoch + 1}...")
         model.train()
+        train_loss = 0.0
         for i, (inputs, labels) in enumerate(train_dataloader):
             inputs = inputs.to(device)
             labels = labels.to(device)
@@ -50,13 +81,31 @@ def train(data_dir, model_dir, epochs, batch_size):
             loss.backward()
             optimizer.step()
 
+            train_loss += loss.item()
             if i % 100 == 0:
                 logging.info(f"Step {i} - loss: {loss.item()}")
+
+        train_loss /= len(train_dataloader)
+        logging.info(f"Train loss: {train_loss}")
+
+        model.eval()
+        val_loss = 0
+        with torch.no_grad():
+            for inputs, labels in val_dataloader:
+                inputs = inputs.to(device)
+                labels = labels.to(device)
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+                val_loss += loss.item()
+
+        val_loss /= len(val_dataloader)
+        logging.info(f"Validation loss: {val_loss}")
+        scheduler.step(val_loss)
 
     torch.save(
         {
             "model_state_dict": model.state_dict(),
-            "labels": train_dataset.classes,
+            "labels": full_dataset.classes,
         },
         os.path.join(model_dir, "model.pt"),
     )

@@ -14,8 +14,8 @@ def load_model(model_path: str, device: torch.device) -> Tuple[nn.Module, List[s
     params = torch.load(model_path, map_location=device)
     model_state_dict = params["model_state_dict"]
     labels = params["labels"]
-    model = models.resnet18(pretrained=True).to(device)
-    model.fc = nn.Linear(512, len(labels)).to(device)
+    model = models.resnet50(pretrained=True).to(device)
+    model.fc = nn.Linear(2048, len(labels)).to(device)
     model.load_state_dict(model_state_dict)
     model.eval()
     return model, labels
@@ -47,7 +47,7 @@ def classify(
         label_name = labels[predicted[0]]
         likelihoods = nn.functional.softmax(outputs, dim=1)[0]
         logging.info(file)
-        logging.info(f"[{label_name}]")
+        logging.info(f"-> {label_name}")
         for i, label in enumerate(labels):
             logging.info(f"{label}: {likelihoods[i]:.4f}")
 
