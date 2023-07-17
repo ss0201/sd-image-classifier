@@ -35,17 +35,7 @@ def build_file_cache(dirs):
     return cache
 
 
-def check_similarity(file_path, reference_file_path, similarity_threshold):
-    similarity = calc_image_similarity(file_path, reference_file_path)
-    if similarity > similarity_threshold:
-        logging.info(
-            f"Found matching file {reference_file_path} " f"(similarity: {similarity})"
-        )
-        return True
-    return False
-
-
-def find_matching_reference_dir(
+def find_matching_reference_file(
     file_path, reference_dirs, similarity_threshold, file_cache
 ):
     # First check if there is a file with the same name in the reference dirs
@@ -54,17 +44,19 @@ def find_matching_reference_dir(
     for reference_dir in reference_dirs:
         if basename in file_cache[reference_dir]:
             reference_file_path = os.path.join(reference_dir, basename)
-            if check_similarity(file_path, reference_file_path, similarity_threshold):
-                return reference_dir
+            similarity = calc_image_similarity(file_path, reference_file_path)
+            if similarity > similarity_threshold:
+                return reference_dir, basename, similarity
 
     # Otherwise, check the similarity of all files in the reference dirs
     for reference_dir in reference_dirs:
         for reference_file in file_cache[reference_dir]:
             reference_file_path = os.path.join(reference_dir, reference_file)
-            if check_similarity(file_path, reference_file_path, similarity_threshold):
-                return reference_dir
+            similarity = calc_image_similarity(file_path, reference_file_path)
+            if similarity > similarity_threshold:
+                return reference_dir, reference_file, similarity
 
-    return None
+    return None, None, None
 
 
 def process_file(
@@ -80,13 +72,11 @@ def process_file(
         for processed_dir in processed_dirs
         if processed_dir in file_cache
     ):
-        logging.info(f"Skipping {src_file}...")
+        logging.info(f"Skipping {src_file}")
         return
 
-    logging.info(f"Processing {src_file}...")
-
     src_file_path = os.path.join(src_dir, src_file)
-    matching_reference_dir = find_matching_reference_dir(
+    matching_reference_dir, matching_file, similarity = find_matching_reference_file(
         src_file_path, reference_dirs, similarity_threshold, file_cache
     )
     dest_dir_name = (
@@ -96,7 +86,11 @@ def process_file(
     )
     dest_path = os.path.join(work_dir, dest_dir_name, src_file)
 
-    logging.info(f"Copying {src_file_path} to {dest_path}...")
+    logging.info(
+        f"Copying {src_file}\n"
+        f"   -> {dest_dir_name} (similarity: {similarity})\n"
+        f"   Matching file: {matching_file}"
+    )
 
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
     shutil.copy2(src_file_path, dest_path)
