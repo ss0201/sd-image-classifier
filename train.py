@@ -10,6 +10,7 @@ from torch import nn, optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, models, transforms
+from torchvision.models import ResNet50_Weights
 
 
 def train(data_dir: str, model_dir: str, epochs: int, batch_size: int) -> None:
@@ -91,7 +92,7 @@ def get_dataloaders(
 
 
 def get_model(device: torch.device, num_classes: int) -> nn.Module:
-    model = models.resnet50(pretrained=True)
+    model = models.resnet50(weights=ResNet50_Weights.DEFAULT)
     model.fc = nn.Linear(model.fc.in_features, num_classes)
     model = model.to(device)
 
