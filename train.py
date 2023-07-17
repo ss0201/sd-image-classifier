@@ -2,36 +2,42 @@ import argparse
 import logging
 import os
 import sys
-from typing import Tuple, cast
+from typing import List, Tuple, cast
 
 import torch
 import torch.utils.data
+from sklearn.model_selection import KFold
 from torch import nn, optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import datasets, models, transforms
 from torchvision.models import ResNet50_Weights
 
 
-def train(data_dir: str, model_dir: str, epochs: int, batch_size: int) -> None:
+def train(
+    data_dir: str, model_dir: str, epochs: int, batch_size: int, n_splits: int
+) -> None:
     device = get_device()
     train_transform, val_transform = get_transforms()
-    train_dataset, val_dataset, full_dataset = get_datasets(
-        data_dir, train_transform, val_transform
-    )
-    train_dataloader, val_dataloader = get_dataloaders(
-        train_dataset, val_dataset, batch_size
-    )
+    full_dataset = datasets.ImageFolder(data_dir)
+    folds = get_datasets(full_dataset, n_splits, train_transform, val_transform)
     model = get_model(device, len(full_dataset.classes))
     criterion = get_criterion(device, full_dataset)
     optimizer = get_optimizer(model)
     scheduler = get_scheduler(optimizer)
 
-    for epoch in range(epochs):
-        logging.info(f"Starting epoch {epoch + 1}...")
-        train_epoch(device, model, criterion, optimizer, train_dataloader)
-        val_loss = validate_epoch(device, model, criterion, val_dataloader)
-        scheduler.step(val_loss)
+    for fold, (train_dataset, val_dataset) in enumerate(folds):
+        logging.info(f"Starting fold {fold + 1}...")
+        train_dataloader, val_dataloader = get_dataloaders(
+            train_dataset, val_dataset, batch_size
+        )
+        for epoch in range(epochs):
+            logging.info(f"Starting epoch {epoch + 1}...")
+            train_epoch(device, model, criterion, optimizer, train_dataloader)
+            val_loss = validate_epoch(device, model, criterion, val_dataloader)
+            scheduler.step(val_loss)
+
+        logging.info(f"Finished fold {fold + 1}.")
 
     save_model(model_dir, model, full_dataset)
 
@@ -64,22 +70,26 @@ def get_transforms() -> Tuple[transforms.Compose, transforms.Compose]:
 
 
 def get_datasets(
-    data_dir: str,
+    full_dataset: datasets.ImageFolder,
+    n_splits: int,
     train_transform: transforms.Compose,
     val_transform: transforms.Compose,
-) -> Tuple[Dataset, Dataset, datasets.ImageFolder]:
-    full_dataset = datasets.ImageFolder(data_dir)
-    train_size = int(0.8 * len(full_dataset))
-    test_size = len(full_dataset) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(
-        full_dataset, [train_size, test_size]
-    )
-    train_dataset_image_folder = cast(datasets.ImageFolder, train_dataset.dataset)
-    val_dataset_image_folder = cast(datasets.ImageFolder, val_dataset.dataset)
-    train_dataset_image_folder.transform = train_transform
-    val_dataset_image_folder.transform = val_transform
+) -> List[Tuple[Dataset, Dataset]]:
+    kfold = KFold(n_splits=n_splits)
+    indices = [str(i) for i in range(len(full_dataset))]
+    folds = []
+    for train_indices, val_indices in kfold.split(indices):
+        train_indices = cast(List[int], train_indices)
+        val_indices = cast(List[int], val_indices)
+        train_subset = Subset(full_dataset, train_indices)
+        val_subset = Subset(full_dataset, val_indices)
+        train_subset.dataset = cast(datasets.ImageFolder, train_subset.dataset)
+        val_subset.dataset = cast(datasets.ImageFolder, val_subset.dataset)
+        train_subset.dataset.transform = train_transform
+        val_subset.dataset.transform = val_transform
+        folds.append((train_subset, val_subset))
 
-    return train_dataset, val_dataset, full_dataset
+    return folds
 
 
 def get_dataloaders(
@@ -210,6 +220,12 @@ def main() -> None:
         help="Number of images per batch.",
         default=32,
     )
+    parser.add_argument(
+        "--n-splits",
+        type=int,
+        help="Number of folds for cross-validation.",
+        default=5,
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -220,7 +236,7 @@ def main() -> None:
 
     logging.info(f"Training model with data from {args.data_dir}...")
 
-    train(args.data_dir, args.model_dir, args.epochs, args.batch_size)
+    train(args.data_dir, args.model_dir, args.epochs, args.batch_size, args.n_splits)
 
     logging.info(f"Model saved to {args.model_dir}.")
 
