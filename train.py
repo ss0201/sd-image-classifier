@@ -6,7 +6,10 @@ from typing import Tuple, cast
 
 import torch
 import torch.utils.data
-import torchvision
+from torch import nn, optim
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.utils.data import DataLoader, Dataset
+from torchvision import datasets, models, transforms
 
 
 def train(data_dir: str, model_dir: str, epochs: int, batch_size: int) -> None:
@@ -38,27 +41,21 @@ def get_device() -> torch.device:
     return device
 
 
-def get_transforms() -> (
-    Tuple[torchvision.transforms.Compose, torchvision.transforms.Compose]
-):
-    train_transform = torchvision.transforms.Compose(
+def get_transforms() -> Tuple[transforms.Compose, transforms.Compose]:
+    train_transform = transforms.Compose(
         [
-            torchvision.transforms.RandomHorizontalFlip(),
-            torchvision.transforms.Resize((224, 224)),
-            torchvision.transforms.ToTensor(),
-            torchvision.transforms.Normalize(
-                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-            ),
+            transforms.RandomHorizontalFlip(),
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
 
-    val_transform = torchvision.transforms.Compose(
+    val_transform = transforms.Compose(
         [
-            torchvision.transforms.Resize((224, 224)),
-            torchvision.transforms.ToTensor(),
-            torchvision.transforms.Normalize(
-                mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-            ),
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
 
@@ -67,23 +64,17 @@ def get_transforms() -> (
 
 def get_datasets(
     data_dir: str,
-    train_transform: torchvision.transforms.Compose,
-    val_transform: torchvision.transforms.Compose,
-) -> Tuple[
-    torch.utils.data.Dataset, torch.utils.data.Dataset, torchvision.datasets.ImageFolder
-]:
-    full_dataset = torchvision.datasets.ImageFolder(data_dir)
+    train_transform: transforms.Compose,
+    val_transform: transforms.Compose,
+) -> Tuple[Dataset, Dataset, datasets.ImageFolder]:
+    full_dataset = datasets.ImageFolder(data_dir)
     train_size = int(0.8 * len(full_dataset))
     test_size = len(full_dataset) - train_size
     train_dataset, val_dataset = torch.utils.data.random_split(
         full_dataset, [train_size, test_size]
     )
-    train_dataset_image_folder = cast(
-        torchvision.datasets.ImageFolder, train_dataset.dataset
-    )
-    val_dataset_image_folder = cast(
-        torchvision.datasets.ImageFolder, val_dataset.dataset
-    )
+    train_dataset_image_folder = cast(datasets.ImageFolder, train_dataset.dataset)
+    val_dataset_image_folder = cast(datasets.ImageFolder, val_dataset.dataset)
     train_dataset_image_folder.transform = train_transform
     val_dataset_image_folder.transform = val_transform
 
@@ -91,60 +82,48 @@ def get_datasets(
 
 
 def get_dataloaders(
-    train_dataset: torch.utils.data.Dataset,
-    val_dataset: torch.utils.data.Dataset,
-    batch_size: int,
-) -> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
-    train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=True
-    )
-    val_dataloader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=batch_size, shuffle=True
-    )
+    train_dataset: Dataset, val_dataset: Dataset, batch_size: int
+) -> Tuple[DataLoader, DataLoader]:
+    train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
 
     return train_dataloader, val_dataloader
 
 
-def get_model(device: torch.device, num_classes: int) -> torch.nn.Module:
-    model = torchvision.models.resnet50(
-        weights=torchvision.models.ResNet50_Weights.DEFAULT
-    )
-    model.fc = torch.nn.Linear(model.fc.in_features, num_classes)
+def get_model(device: torch.device, num_classes: int) -> nn.Module:
+    model = models.resnet50(pretrained=True)
+    model.fc = nn.Linear(model.fc.in_features, num_classes)
     model = model.to(device)
 
     return model
 
 
 def get_criterion(
-    device: torch.device, full_dataset: torchvision.datasets.ImageFolder
-) -> torch.nn.CrossEntropyLoss:
+    device: torch.device, full_dataset: datasets.ImageFolder
+) -> nn.CrossEntropyLoss:
     class_count = [0, 0, 0]
     for _, class_idx in full_dataset:
         class_count[class_idx] += 1
     class_weights = 1.0 / torch.tensor(class_count, dtype=torch.float)
     class_weights_normalized = (class_weights / class_weights.sum()).to(device)
 
-    return torch.nn.CrossEntropyLoss(weight=class_weights_normalized)
+    return nn.CrossEntropyLoss(weight=class_weights_normalized)
 
 
-def get_optimizer(model: torch.nn.Module) -> torch.optim.Optimizer:
-    return torch.optim.Adam(model.parameters(), lr=0.001)
+def get_optimizer(model: nn.Module) -> optim.Optimizer:
+    return optim.Adam(model.parameters(), lr=0.001)
 
 
-def get_scheduler(
-    optimizer: torch.optim.Optimizer,
-) -> torch.optim.lr_scheduler.ReduceLROnPlateau:
-    return torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.1, patience=10
-    )
+def get_scheduler(optimizer: optim.Optimizer) -> ReduceLROnPlateau:
+    return ReduceLROnPlateau(optimizer, mode="min", factor=0.1, patience=10)
 
 
 def train_epoch(
     device: torch.device,
-    model: torch.nn.Module,
-    criterion: torch.nn.CrossEntropyLoss,
-    optimizer: torch.optim.Optimizer,
-    train_dataloader: torch.utils.data.DataLoader,
+    model: nn.Module,
+    criterion: nn.CrossEntropyLoss,
+    optimizer: optim.Optimizer,
+    train_dataloader: DataLoader,
 ) -> float:
     model.train()
     train_loss = 0.0
@@ -170,9 +149,9 @@ def train_epoch(
 
 def validate_epoch(
     device: torch.device,
-    model: torch.nn.Module,
-    criterion: torch.nn.CrossEntropyLoss,
-    val_dataloader: torch.utils.data.DataLoader,
+    model: nn.Module,
+    criterion: nn.CrossEntropyLoss,
+    val_dataloader: DataLoader,
 ) -> float:
     model.eval()
     val_loss = 0
@@ -191,9 +170,7 @@ def validate_epoch(
 
 
 def save_model(
-    model_dir: str,
-    model: torch.nn.Module,
-    full_dataset: torchvision.datasets.ImageFolder,
+    model_dir: str, model: nn.Module, full_dataset: datasets.ImageFolder
 ) -> None:
     torch.save(
         {
@@ -206,7 +183,7 @@ def save_model(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Train a model to predict the classfication of a given image."
+        description="Train a model to predict the classification of a given image."
     )
     parser.add_argument(
         "--data-dir",
