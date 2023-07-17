@@ -151,7 +151,7 @@ def train_epoch(
         optimizer.step()
 
         train_loss += loss.item()
-        if i % 100 == 0:
+        if i % 10 == 0:
             logging.info(f"Step {i} - loss: {loss.item()}")
 
     train_loss /= len(train_dataloader)
