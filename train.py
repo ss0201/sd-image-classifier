@@ -10,18 +10,24 @@ from sklearn.model_selection import KFold
 from torch import nn, optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, Dataset, Subset
-from torchvision import datasets, models, transforms
-from torchvision.models import EfficientNet_V2_M_Weights
+from torchvision import datasets, transforms
+
+from util import create_model, get_device, get_train_transform, get_val_transform
 
 
 def train(
-    data_dir: str, model_dir: str, epochs: int, batch_size: int, n_splits: int
+    data_dir: str,
+    model_dir: str,
+    epochs: int,
+    batch_size: int,
+    n_splits: int,
+    device: torch.device,
 ) -> None:
-    device = get_device()
-    train_transform, val_transform = get_transforms()
+    train_transform = get_train_transform()
+    val_transform = get_val_transform()
     full_dataset = datasets.ImageFolder(data_dir)
-    folds = get_datasets(full_dataset, n_splits, train_transform, val_transform)
-    model = get_model(device, len(full_dataset.classes))
+    folds = create_datasets(full_dataset, n_splits, train_transform, val_transform)
+    model = create_model(device, len(full_dataset.classes))
     criterion = get_criterion(device, full_dataset)
     optimizer = get_optimizer(model)
     scheduler = get_scheduler(optimizer)
@@ -42,34 +48,7 @@ def train(
     save_model(model_dir, model, full_dataset)
 
 
-def get_device() -> torch.device:
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    logging.info(f"Using device {device}.")
-    return device
-
-
-def get_transforms() -> Tuple[transforms.Compose, transforms.Compose]:
-    train_transform = transforms.Compose(
-        [
-            transforms.RandomHorizontalFlip(),
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
-    )
-
-    val_transform = transforms.Compose(
-        [
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ]
-    )
-
-    return train_transform, val_transform
-
-
-def get_datasets(
+def create_datasets(
     full_dataset: datasets.ImageFolder,
     n_splits: int,
     train_transform: transforms.Compose,
@@ -101,17 +80,6 @@ def get_dataloaders(
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
 
     return train_dataloader, val_dataloader
-
-
-def get_model(device: torch.device, num_classes: int) -> nn.Module:
-    model = models.efficientnet_v2_m(weights=EfficientNet_V2_M_Weights.DEFAULT)
-    model.classifier = nn.Sequential(
-        nn.Dropout(0.3),
-        nn.Linear(1280, num_classes),
-    )
-    model = model.to(device)
-
-    return model
 
 
 def get_criterion(
@@ -240,9 +208,17 @@ def main() -> None:
         handlers=[logging.StreamHandler(sys.stdout)],
     )
 
-    logging.info(f"Training model with data from {args.data_dir}...")
+    device = get_device()
 
-    train(args.data_dir, args.model_dir, args.epochs, args.batch_size, args.n_splits)
+    logging.info(f"Training model with data from {args.data_dir}...")
+    train(
+        args.data_dir,
+        args.model_dir,
+        args.epochs,
+        args.batch_size,
+        args.n_splits,
+        device,
+    )
 
     logging.info(f"Model saved to {args.model_dir}.")
 

@@ -153,7 +153,6 @@ def main():
         help="Directories containing the reference images.",
         required=True,
     )
-    parser.add_argument("--log_level", type=str, default="INFO", help="Logging level.")
     parser.add_argument(
         "--threshold",
         type=float,
@@ -162,7 +161,8 @@ def main():
     )
     args = parser.parse_args()
 
-    logging.basicConfig(level=args.log_level.upper())
+    logging.basicConfig(level=logging.INFO)
+
     logging.info(f"Copying files from {args.src_dir} to {args.work_dir}...")
 
     copy_src_files_to_work_dir_based_on_reference(

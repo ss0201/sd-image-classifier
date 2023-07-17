@@ -4,25 +4,19 @@ import os
 from typing import List, Tuple, cast
 
 import torch
-import torchvision.transforms as transforms
 from PIL import Image
 from torch import nn
-from torchvision import models
-from torchvision.models import EfficientNet_V2_M_Weights
+
+from util import create_model, get_device, get_val_transform
 
 
 def load_model(model_path: str, device: torch.device) -> Tuple[nn.Module, List[str]]:
     params = torch.load(model_path, map_location=device)
     model_state_dict = params["model_state_dict"]
     classes = params["labels"]
-    model = models.efficientnet_v2_m(weights=EfficientNet_V2_M_Weights.DEFAULT)
-    model.classifier = nn.Sequential(
-        nn.Dropout(0.3),
-        nn.Linear(1280, len(classes)),
-    )
+    model = create_model(device, len(classes))
     model.load_state_dict(model_state_dict)
     model.eval()
-    model = model.to(device)
     return model, classes
 
 
@@ -30,16 +24,7 @@ def load_model(model_path: str, device: torch.device) -> Tuple[nn.Module, List[s
 def classify(
     data_dir: str, model: nn.Module, classes: List[str], device: torch.device
 ) -> None:
-    transform = transforms.Compose(
-        [
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225],
-            ),
-        ]
-    )
+    transform = get_val_transform()
 
     for file in os.listdir(data_dir):
         image = Image.open(os.path.join(data_dir, file))
@@ -79,9 +64,7 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO)
 
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    logging.info(f"Using device {device}.")
-
+    device = get_device()
     model, classes = load_model(args.model, device)
     classify(args.data_dir, model, classes, device)
 
