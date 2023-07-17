@@ -98,11 +98,8 @@ def process_file(
 
 
 def copy_src_files_to_work_dir_based_on_reference(
-    work_dir, src_dir, reference_dirs, similarity_threshold, enable_image_cache
+    work_dir, src_dir, reference_dirs, similarity_threshold
 ):
-    if not enable_image_cache:
-        process_image.cache_clear()
-
     processed_dirs = [
         os.path.join(work_dir, dir_name)
         for dir_name in [os.path.basename(ref_dir) for ref_dir in reference_dirs]
@@ -162,11 +159,6 @@ def main():
         default=0.5,
         help="Similarity threshold for images (0-1).",
     )
-    parser.add_argument(
-        "--enable-image-cache",
-        action="store_true",
-        help="Enable image data caching for faster image processing.",
-    )
     args = parser.parse_args()
 
     logging.basicConfig(level=args.log_level.upper())
@@ -177,7 +169,6 @@ def main():
         Path(args.src_dir),
         args.ref_dirs,
         args.threshold,
-        args.enable_image_cache,
     )
 
     logging.info("Done.")
