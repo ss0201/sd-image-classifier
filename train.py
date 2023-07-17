@@ -2,17 +2,45 @@ import argparse
 import logging
 import os
 import sys
-from typing import cast
+from typing import Tuple, cast
 
 import torch
 import torch.utils.data
 import torchvision
 
 
-def train(data_dir, model_dir, epochs, batch_size):
+def train(data_dir: str, model_dir: str, epochs: int, batch_size: int) -> None:
+    device = get_device()
+    train_transform, val_transform = get_transforms()
+    train_dataset, val_dataset, full_dataset = get_datasets(
+        data_dir, train_transform, val_transform
+    )
+    train_dataloader, val_dataloader = get_dataloaders(
+        train_dataset, val_dataset, batch_size
+    )
+    model = get_model(device, len(full_dataset.classes))
+    criterion = get_criterion(device, full_dataset)
+    optimizer = get_optimizer(model)
+    scheduler = get_scheduler(optimizer)
+
+    for epoch in range(epochs):
+        logging.info(f"Starting epoch {epoch + 1}...")
+        train_epoch(device, model, criterion, optimizer, train_dataloader)
+        val_loss = validate_epoch(device, model, criterion, val_dataloader)
+        scheduler.step(val_loss)
+
+    save_model(model_dir, model, full_dataset)
+
+
+def get_device() -> torch.device:
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     logging.info(f"Using device {device}.")
+    return device
 
+
+def get_transforms() -> (
+    Tuple[torchvision.transforms.Compose, torchvision.transforms.Compose]
+):
     train_transform = torchvision.transforms.Compose(
         [
             torchvision.transforms.RandomHorizontalFlip(),
@@ -34,6 +62,16 @@ def train(data_dir, model_dir, epochs, batch_size):
         ]
     )
 
+    return train_transform, val_transform
+
+
+def get_datasets(
+    data_dir: str,
+    train_transform: torchvision.transforms.Compose,
+    val_transform: torchvision.transforms.Compose,
+) -> Tuple[
+    torch.utils.data.Dataset, torch.utils.data.Dataset, torchvision.datasets.ImageFolder
+]:
     full_dataset = torchvision.datasets.ImageFolder(data_dir)
     train_size = int(0.8 * len(full_dataset))
     test_size = len(full_dataset) - train_size
@@ -49,6 +87,14 @@ def train(data_dir, model_dir, epochs, batch_size):
     train_dataset_image_folder.transform = train_transform
     val_dataset_image_folder.transform = val_transform
 
+    return train_dataset, val_dataset, full_dataset
+
+
+def get_dataloaders(
+    train_dataset: torch.utils.data.Dataset,
+    val_dataset: torch.utils.data.Dataset,
+    batch_size: int,
+) -> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader]:
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, shuffle=True
     )
@@ -56,63 +102,99 @@ def train(data_dir, model_dir, epochs, batch_size):
         val_dataset, batch_size=batch_size, shuffle=True
     )
 
+    return train_dataloader, val_dataloader
+
+
+def get_model(device: torch.device, num_classes: int) -> torch.nn.Module:
     model = torchvision.models.resnet50(
         weights=torchvision.models.ResNet50_Weights.DEFAULT
     )
-    model.fc = torch.nn.Linear(model.fc.in_features, len(full_dataset.classes))
+    model.fc = torch.nn.Linear(model.fc.in_features, num_classes)
     model = model.to(device)
 
-    class_count = [
-        0,
-        0,
-        0,
-    ]
+    return model
+
+
+def get_criterion(
+    device: torch.device, full_dataset: torchvision.datasets.ImageFolder
+) -> torch.nn.CrossEntropyLoss:
+    class_count = [0, 0, 0]
     for _, class_idx in full_dataset:
         class_count[class_idx] += 1
     class_weights = 1.0 / torch.tensor(class_count, dtype=torch.float)
     class_weights_normalized = (class_weights / class_weights.sum()).to(device)
 
-    criterion = torch.nn.CrossEntropyLoss(weight=class_weights_normalized)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    return torch.nn.CrossEntropyLoss(weight=class_weights_normalized)
+
+
+def get_optimizer(model: torch.nn.Module) -> torch.optim.Optimizer:
+    return torch.optim.Adam(model.parameters(), lr=0.001)
+
+
+def get_scheduler(
+    optimizer: torch.optim.Optimizer,
+) -> torch.optim.lr_scheduler.ReduceLROnPlateau:
+    return torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.1, patience=10
     )
 
-    for epoch in range(epochs):
-        logging.info(f"Starting epoch {epoch + 1}...")
-        model.train()
-        train_loss = 0.0
-        for i, (inputs, labels) in enumerate(train_dataloader):
+
+def train_epoch(
+    device: torch.device,
+    model: torch.nn.Module,
+    criterion: torch.nn.CrossEntropyLoss,
+    optimizer: torch.optim.Optimizer,
+    train_dataloader: torch.utils.data.DataLoader,
+) -> float:
+    model.train()
+    train_loss = 0.0
+    for i, (inputs, labels) in enumerate(train_dataloader):
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss: torch.Tensor = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+        train_loss += loss.item()
+        if i % 100 == 0:
+            logging.info(f"Step {i} - loss: {loss.item()}")
+
+    train_loss /= len(train_dataloader)
+    logging.info(f"Train loss: {train_loss}")
+
+    return train_loss
+
+
+def validate_epoch(
+    device: torch.device,
+    model: torch.nn.Module,
+    criterion: torch.nn.CrossEntropyLoss,
+    val_dataloader: torch.utils.data.DataLoader,
+) -> float:
+    model.eval()
+    val_loss = 0
+    with torch.no_grad():
+        for inputs, labels in val_dataloader:
             inputs = inputs.to(device)
             labels = labels.to(device)
-
-            optimizer.zero_grad()
             outputs = model(inputs)
-            loss: torch.Tensor = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
+            loss = criterion(outputs, labels)
+            val_loss += loss.item()
 
-            train_loss += loss.item()
-            if i % 100 == 0:
-                logging.info(f"Step {i} - loss: {loss.item()}")
+    val_loss /= len(val_dataloader)
+    logging.info(f"Validation loss: {val_loss}")
 
-        train_loss /= len(train_dataloader)
-        logging.info(f"Train loss: {train_loss}")
+    return val_loss
 
-        model.eval()
-        val_loss = 0
-        with torch.no_grad():
-            for inputs, labels in val_dataloader:
-                inputs = inputs.to(device)
-                labels = labels.to(device)
-                outputs = model(inputs)
-                loss = criterion(outputs, labels)
-                val_loss += loss.item()
 
-        val_loss /= len(val_dataloader)
-        logging.info(f"Validation loss: {val_loss}")
-        scheduler.step(val_loss)
-
+def save_model(
+    model_dir: str,
+    model: torch.nn.Module,
+    full_dataset: torchvision.datasets.ImageFolder,
+) -> None:
     torch.save(
         {
             "model_state_dict": model.state_dict(),
@@ -122,7 +204,7 @@ def train(data_dir, model_dir, epochs, batch_size):
     )
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Train a model to predict the classfication of a given image."
     )
