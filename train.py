@@ -46,7 +46,7 @@ def train(data_dir, model_dir, epochs, batch_size):
 
             optimizer.zero_grad()
             outputs = model(inputs)
-            loss = criterion(outputs, labels)
+            loss: torch.Tensor = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
 

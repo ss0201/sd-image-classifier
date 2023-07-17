@@ -1,7 +1,7 @@
 import argparse
 import logging
 import os
-from typing import cast
+from typing import List, Tuple, cast
 
 import torch
 import torchvision.transforms as transforms
@@ -10,7 +10,7 @@ from torch import nn
 from torchvision import models
 
 
-def load_model(model_path, device):
+def load_model(model_path: str, device: torch.device) -> Tuple[nn.Module, List[str]]:
     params = torch.load(model_path, map_location=device)
     model_state_dict = params["model_state_dict"]
     labels = params["labels"]
@@ -21,7 +21,9 @@ def load_model(model_path, device):
     return model, labels
 
 
-def classify(data_dir, model, labels, device):
+def classify(
+    data_dir: str, model: nn.Module, labels: List[str], device: torch.device
+) -> None:
     transform = transforms.Compose(
         [
             transforms.Resize((224, 224)),
@@ -40,14 +42,17 @@ def classify(data_dir, model, labels, device):
 
         with torch.no_grad():
             image_tensor = image_tensor.to(device)
-            outputs = model(image_tensor)
+            outputs: torch.Tensor = model(image_tensor)
             _, predicted = torch.max(outputs.data, 1)
             label_name = labels[predicted[0]]
+            likelihoods = nn.functional.softmax(outputs, dim=1)[0]
+            logging.info(file)
+            for i, label in enumerate(labels):
+                logging.info(f"{label}: {likelihoods[i]:.4f}")
+            logging.info(f"Predicted class: {label_name}")
 
-            logging.info(f"{label_name} - {file}")
 
-
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(
         description="Classify the data in the given directory using the trained model."
     )
