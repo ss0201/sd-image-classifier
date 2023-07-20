@@ -1,4 +1,5 @@
 import argparse
+import copy
 import logging
 import os
 import sys
@@ -27,25 +28,46 @@ def train(
     val_transform = get_val_transform()
     full_dataset = datasets.ImageFolder(data_dir)
     folds = create_datasets(full_dataset, n_splits, train_transform, val_transform)
-    model = create_model(device, len(full_dataset.classes))
     criterion = get_criterion(device, full_dataset)
-    optimizer = get_optimizer(model)
-    scheduler = get_scheduler(optimizer)
+
+    best_model = None
+    best_val_loss = float("inf")
+    val_losses = []
 
     for fold, (train_dataset, val_dataset) in enumerate(folds):
         logging.info(f"Starting fold {fold + 1}...")
         train_dataloader, val_dataloader = get_dataloaders(
             train_dataset, val_dataset, batch_size
         )
+        model = create_model(device, len(full_dataset.classes))
+        optimizer = get_optimizer(model)
+        scheduler = get_scheduler(optimizer)
+
+        val_loss = float("inf")
         for epoch in range(epochs):
             logging.info(f"Starting epoch {epoch + 1}...")
             train_epoch(device, model, criterion, optimizer, train_dataloader)
             val_loss = validate_epoch(device, model, criterion, val_dataloader)
             scheduler.step(val_loss)
 
+        val_losses.append(val_loss)
         logging.info(f"Finished fold {fold + 1}.")
 
-    save_model(model_dir, model, full_dataset)
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_model = copy.deepcopy(model)
+
+    logging.info("Finished training.")
+
+    avg_val_loss = sum(val_losses) / len(val_losses)
+    logging.info(f"Average validation loss: {avg_val_loss}")
+    for i, val_loss in enumerate(val_losses):
+        logging.info(f"Fold {i + 1} validation loss: {val_loss}")
+
+    if best_model is not None:
+        save_model(model_dir, best_model, full_dataset.classes)
+    else:
+        raise RuntimeError("No model was trained.")
 
 
 def create_datasets(
@@ -153,13 +175,11 @@ def validate_epoch(
     return val_loss
 
 
-def save_model(
-    model_dir: str, model: nn.Module, full_dataset: datasets.ImageFolder
-) -> None:
+def save_model(model_dir: str, model: nn.Module, classes: list[str]) -> None:
     torch.save(
         {
             "model_state_dict": model.state_dict(),
-            "classes": full_dataset.classes,
+            "classes": classes,
         },
         os.path.join(model_dir, "model.pt"),
     )
@@ -198,7 +218,7 @@ def main() -> None:
         "--n-splits",
         type=int,
         help="Number of folds for cross-validation.",
-        default=5,
+        default=1,
     )
     args = parser.parse_args()
 
