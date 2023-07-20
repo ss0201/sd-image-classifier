@@ -9,7 +9,7 @@ import torch
 import torch.utils.data
 from sklearn.model_selection import KFold
 from torch import nn, optim
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.optim.lr_scheduler import LRScheduler, OneCycleLR
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import datasets, transforms
 
@@ -41,14 +41,14 @@ def train(
         )
         model = create_model(device, len(full_dataset.classes))
         optimizer = get_optimizer(model)
-        scheduler = get_scheduler(optimizer)
+        scheduler = get_scheduler(optimizer, epochs, len(train_dataloader))
 
         val_loss = float("inf")
         for epoch in range(epochs):
             logging.info(f"Starting epoch {epoch + 1}...")
             train_epoch(device, model, criterion, optimizer, train_dataloader)
             val_loss = validate_epoch(device, model, criterion, val_dataloader)
-            scheduler.step(val_loss)
+            scheduler.step()
 
         val_losses.append(val_loss)
         logging.info(f"Finished fold {fold + 1}.")
@@ -120,8 +120,12 @@ def get_optimizer(model: nn.Module) -> optim.Optimizer:
     return optim.Adam(model.parameters(), lr=0.001)
 
 
-def get_scheduler(optimizer: optim.Optimizer) -> ReduceLROnPlateau:
-    return ReduceLROnPlateau(optimizer, mode="min", factor=0.1, patience=10)
+def get_scheduler(
+    optimizer: optim.Optimizer, epochs: int, steps_per_epoch: int
+) -> LRScheduler:
+    return OneCycleLR(
+        optimizer, max_lr=0.1, epochs=epochs, steps_per_epoch=steps_per_epoch
+    )
 
 
 def train_epoch(
