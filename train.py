@@ -3,7 +3,7 @@ import copy
 import logging
 import os
 import sys
-from typing import List, Tuple, cast
+from typing import Tuple, cast
 
 import torch
 import torch.utils.data
@@ -75,24 +75,67 @@ def create_datasets(
     n_splits: int,
     train_transform: transforms.Compose,
     val_transform: transforms.Compose,
-) -> List[Tuple[Dataset, Dataset]]:
+) -> list[Tuple[Dataset, Dataset]]:
+    if n_splits > 1:
+        return create_datasets_by_kfold(
+            full_dataset, n_splits, train_transform, val_transform
+        )
+    else:
+        train_dataset, val_dataset = create_datasets_by_holdout(
+            full_dataset, train_transform, val_transform
+        )
+        return [(train_dataset, val_dataset)]
+
+
+def create_datasets_by_kfold(
+    full_dataset: datasets.ImageFolder,
+    n_splits: int,
+    train_transform: transforms.Compose,
+    val_transform: transforms.Compose,
+) -> list[Tuple[Dataset, Dataset]]:
     kfold = KFold(n_splits=n_splits)
     indices = [str(i) for i in range(len(full_dataset))]
     folds = []
     for train_indices, val_indices in kfold.split(indices):
-        train_indices = cast(List[int], train_indices)
-        val_indices = cast(List[int], val_indices)
+        train_indices = cast(list[int], train_indices)
+        val_indices = cast(list[int], val_indices)
         train_subset = Subset(full_dataset, train_indices)
         val_subset = Subset(full_dataset, val_indices)
 
-        train_subset.dataset = cast(datasets.ImageFolder, train_subset.dataset)
-        val_subset.dataset = cast(datasets.ImageFolder, val_subset.dataset)
-        train_subset.dataset.transform = train_transform
-        val_subset.dataset.transform = val_transform
-
+        train_subset.dataset = apply_transform_to_dataset(
+            train_subset.dataset, train_transform
+        )
+        val_subset.dataset = apply_transform_to_dataset(
+            val_subset.dataset, val_transform
+        )
         folds.append((train_subset, val_subset))
 
     return folds
+
+
+def create_datasets_by_holdout(
+    full_dataset: datasets.ImageFolder,
+    train_transform: transforms.Compose,
+    val_transform: transforms.Compose,
+) -> Tuple[Dataset, Dataset]:
+    train_size = int(0.8 * len(full_dataset))
+    val_size = len(full_dataset) - train_size
+    train_dataset, val_dataset = torch.utils.data.random_split(
+        full_dataset, [train_size, val_size]
+    )
+    train_dataset.dataset = apply_transform_to_dataset(
+        train_dataset.dataset, train_transform
+    )
+    val_dataset.dataset = apply_transform_to_dataset(val_dataset.dataset, val_transform)
+    return train_dataset, val_dataset
+
+
+def apply_transform_to_dataset(
+    dataset: Dataset, transform: transforms.Compose
+) -> Dataset:
+    dataset = cast(datasets.ImageFolder, dataset)
+    dataset.transform = transform
+    return dataset
 
 
 def get_dataloaders(
