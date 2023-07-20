@@ -43,19 +43,17 @@ def train(
         optimizer = get_optimizer(model)
         scheduler = get_scheduler(optimizer, epochs, len(train_dataloader))
 
-        val_loss = float("inf")
         for epoch in range(epochs):
             logging.info(f"Starting epoch {epoch + 1}...")
             train_epoch(device, model, criterion, optimizer, train_dataloader)
             val_loss = validate_epoch(device, model, criterion, val_dataloader)
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_model = copy.deepcopy(model)
             scheduler.step()
 
-        val_losses.append(val_loss)
+        val_losses.append(best_val_loss)
         logging.info(f"Finished fold {fold + 1}.")
-
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            best_model = copy.deepcopy(model)
 
     logging.info("Finished training.")
 
