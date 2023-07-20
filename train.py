@@ -264,7 +264,7 @@ def main() -> None:
     parser.add_argument(
         "--n-splits",
         type=int,
-        help="Number of folds for cross-validation.",
+        help="Number of folds for cross-validation. If 1, holdout validation is used.",
         default=1,
     )
     args = parser.parse_args()
