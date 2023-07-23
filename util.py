@@ -1,4 +1,5 @@
 import logging
+import random
 from typing import cast
 
 import torch
@@ -8,6 +9,7 @@ from torch import nn
 from torchvision import models, transforms
 from torchvision.models import EfficientNet_V2_M_Weights
 from torchvision.transforms import _functional_pil as F_pil
+from torchvision.transforms import functional as F
 
 
 def create_model(device: torch.device, num_classes: int) -> nn.Module:
@@ -47,10 +49,22 @@ def pad_to_square(img: Image) -> Image:
         return F_pil.pad(img, [0, padding, 0, padding], fill=0)
 
 
+def random_crop_long_side(img: Image) -> Image:
+    w, h = img.size
+    if w < h:
+        new_w = w
+        new_h = int(h * random.triangular(0.9, 1, 1))
+    else:
+        new_w = int(w * random.triangular(0.9, 1, 1))
+        new_h = h
+    return F.center_crop(img, (new_h, new_w))  # type: ignore
+
+
 def get_train_transform(resize_to: int) -> transforms.Compose:
     return transforms.Compose(
         [
             transforms.RandomHorizontalFlip(),
+            transforms.Lambda(random_crop_long_side),
             transforms.Lambda(pad_to_square),
             transforms.Resize(resize_to),
             transforms.ToTensor(),
