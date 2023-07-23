@@ -34,12 +34,12 @@ def classify(
     transform = get_val_transform(resize_to)
 
     for file in os.listdir(data_dir):
-        image = Image.open(os.path.join(data_dir, file))
-        image_tensor = cast(torch.Tensor, transform(image))
-        image_tensor = torch.unsqueeze(image_tensor, 0)
+        raw_image = Image.open(os.path.join(data_dir, file))
+        image = cast(torch.Tensor, transform(raw_image))
+        image = torch.unsqueeze(image, 0)
 
-        image_tensor = image_tensor.to(device)
-        outputs: torch.Tensor = model(image_tensor)
+        image = image.to(device)
+        outputs: torch.Tensor = model(image)
         _, predicted = torch.max(outputs.data, 1)
         class_name = classes[predicted[0]]
         likelihoods = nn.functional.softmax(outputs, dim=1)[0]
