@@ -43,29 +43,6 @@ def get_device() -> torch.device:
     return device
 
 
-def pad_to_square(img: Image) -> Image:
-    w, h = img.size
-    if w == h:
-        return img
-    elif w < h:
-        padding = (h - w) // 2
-        return F_pil.pad(img, [padding, 0, padding, 0], fill=0)
-    else:
-        padding = (w - h) // 2
-        return F_pil.pad(img, [0, padding, 0, padding], fill=0)
-
-
-def random_crop_long_side(img: Image) -> Image:
-    w, h = img.size
-    if w < h:
-        new_w = w
-        new_h = int(h * random.triangular(0.9, 1, 1))
-    else:
-        new_w = int(w * random.triangular(0.9, 1, 1))
-        new_h = h
-    return F.center_crop(img, (new_h, new_w))  # type: ignore
-
-
 def get_train_transform(resize_to: int) -> transforms.Compose:
     return transforms.Compose(
         [
@@ -88,3 +65,26 @@ def get_val_transform(resize_to: int) -> transforms.Compose:
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ]
     )
+
+
+def pad_to_square(img: Image) -> Image:
+    w, h = img.size
+    if w == h:
+        return img
+    elif w < h:
+        padding = (h - w) // 2
+        return F_pil.pad(img, [padding, 0, padding, 0], fill=0)
+    else:
+        padding = (w - h) // 2
+        return F_pil.pad(img, [0, padding, 0, padding], fill=0)
+
+
+def random_crop_long_side(img: Image) -> Image:
+    w, h = img.size
+    if w < h:
+        new_w = w
+        new_h = int(h * random.triangular(0.9, 1, 1))
+    else:
+        new_w = int(w * random.triangular(0.9, 1, 1))
+        new_h = h
+    return F.center_crop(img, (new_h, new_w))  # type: ignore
