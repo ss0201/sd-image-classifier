@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
 from balanced_image_folder import BalancedImageFolder
-from subset_with_transform import DatasetFolderSubset
+from dataset_folder_subset import DatasetFolderSubset
 from util import create_model, get_device, get_train_transform, get_val_transform
 
 
