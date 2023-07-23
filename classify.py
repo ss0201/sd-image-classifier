@@ -10,21 +10,28 @@ from torch import nn
 from util import create_model, get_device, get_val_transform
 
 
-def load_model(model_path: str, device: torch.device) -> Tuple[nn.Module, List[str]]:
+def load_model(
+    model_path: str, device: torch.device
+) -> Tuple[nn.Module, List[str], int]:
     params = torch.load(model_path, map_location=device)
     model_state_dict = params["model_state_dict"]
     classes = params["classes"]
+    resize_to = params["resize_to"]
     model = create_model(device, len(classes))
     model.load_state_dict(model_state_dict)
     model.eval()
-    return model, classes
+    return model, classes, resize_to
 
 
 @torch.no_grad()
 def classify(
-    data_dir: str, model: nn.Module, classes: List[str], device: torch.device
+    data_dir: str,
+    model: nn.Module,
+    classes: List[str],
+    resize_to: int,
+    device: torch.device,
 ) -> None:
-    transform = get_val_transform()
+    transform = get_val_transform(resize_to)
 
     for file in os.listdir(data_dir):
         image = Image.open(os.path.join(data_dir, file))
@@ -65,8 +72,8 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
 
     device = get_device()
-    model, classes = load_model(args.model, device)
-    classify(args.data_dir, model, classes, device)
+    model, classes, resize_to = load_model(args.model, device)
+    classify(args.data_dir, model, classes, resize_to, device)
 
 
 if __name__ == "__main__":

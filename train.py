@@ -2,7 +2,9 @@ import argparse
 import copy
 import logging
 import os
+import random
 import sys
+from collections import Counter
 from typing import Tuple, cast
 
 import torch
@@ -10,24 +12,35 @@ import torch.utils.data
 from sklearn.model_selection import KFold
 from torch import nn, optim
 from torch.optim.lr_scheduler import LRScheduler, OneCycleLR
-from torch.utils.data import DataLoader, Dataset, Subset
+from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
+from subset_with_transform import DatasetFolderSubset
 from util import create_model, get_device, get_train_transform, get_val_transform
 
 
 def train(
     data_dir: str,
     model_dir: str,
+    resize_to: int,
     epochs: int,
     batch_size: int,
     n_splits: int,
+    max_samples_per_class: int,
+    oversample: bool,
     device: torch.device,
 ) -> None:
-    train_transform = get_train_transform()
-    val_transform = get_val_transform()
+    train_transform = get_train_transform(resize_to)
+    val_transform = get_val_transform(resize_to)
     full_dataset = datasets.ImageFolder(data_dir)
-    folds = create_datasets(full_dataset, n_splits, train_transform, val_transform)
+    folds = create_datasets(
+        full_dataset,
+        n_splits,
+        train_transform,
+        val_transform,
+        max_samples_per_class,
+        oversample,
+    )
     criterion = get_criterion(device, full_dataset)
 
     best_model = None
@@ -39,6 +52,7 @@ def train(
         train_dataloader, val_dataloader = get_dataloaders(
             train_dataset, val_dataset, batch_size
         )
+
         model = create_model(device, len(full_dataset.classes))
         optimizer = get_optimizer(model)
         scheduler = get_scheduler(optimizer, epochs, len(train_dataloader))
@@ -63,7 +77,7 @@ def train(
         logging.info(f"Fold {i + 1} validation loss: {val_loss}")
 
     if best_model is not None:
-        save_model(model_dir, best_model, full_dataset.classes)
+        save_model(model_dir, best_model, full_dataset.classes, resize_to)
     else:
         raise RuntimeError("No model was trained.")
 
@@ -73,16 +87,25 @@ def create_datasets(
     n_splits: int,
     train_transform: transforms.Compose,
     val_transform: transforms.Compose,
-) -> list[Tuple[Dataset, Dataset]]:
+    max_samples_per_class: int,
+    oversample: bool,
+) -> list[Tuple[DatasetFolderSubset, DatasetFolderSubset]]:
     if n_splits > 1:
-        return create_datasets_by_kfold(
+        folds = create_datasets_by_kfold(
             full_dataset, n_splits, train_transform, val_transform
         )
     else:
         train_dataset, val_dataset = create_datasets_by_holdout(
             full_dataset, train_transform, val_transform
         )
-        return [(train_dataset, val_dataset)]
+        folds = [(train_dataset, val_dataset)]
+
+    if max_samples_per_class > 0:
+        folds = undersample_dataset(folds, max_samples_per_class)
+    if oversample:
+        folds = oversample_dataset(folds)
+
+    return folds
 
 
 def create_datasets_by_kfold(
@@ -90,22 +113,15 @@ def create_datasets_by_kfold(
     n_splits: int,
     train_transform: transforms.Compose,
     val_transform: transforms.Compose,
-) -> list[Tuple[Dataset, Dataset]]:
+) -> list[Tuple[DatasetFolderSubset, DatasetFolderSubset]]:
     kfold = KFold(n_splits=n_splits)
     indices = [str(i) for i in range(len(full_dataset))]
     folds = []
     for train_indices, val_indices in kfold.split(indices):
         train_indices = cast(list[int], train_indices)
         val_indices = cast(list[int], val_indices)
-        train_subset = Subset(full_dataset, train_indices)
-        val_subset = Subset(full_dataset, val_indices)
-
-        train_subset.dataset = apply_transform_to_dataset(
-            train_subset.dataset, train_transform
-        )
-        val_subset.dataset = apply_transform_to_dataset(
-            val_subset.dataset, val_transform
-        )
+        train_subset = DatasetFolderSubset(full_dataset, train_indices, train_transform)
+        val_subset = DatasetFolderSubset(full_dataset, val_indices, val_transform)
         folds.append((train_subset, val_subset))
 
     return folds
@@ -115,29 +131,71 @@ def create_datasets_by_holdout(
     full_dataset: datasets.ImageFolder,
     train_transform: transforms.Compose,
     val_transform: transforms.Compose,
-) -> Tuple[Dataset, Dataset]:
+) -> Tuple[DatasetFolderSubset, DatasetFolderSubset]:
     train_size = int(0.8 * len(full_dataset))
     val_size = len(full_dataset) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(
+    train_subset, val_subset = torch.utils.data.random_split(
         full_dataset, [train_size, val_size]
     )
-    train_dataset.dataset = apply_transform_to_dataset(
-        train_dataset.dataset, train_transform
+    train_subset = DatasetFolderSubset(
+        full_dataset, list(train_subset.indices), train_transform
     )
-    val_dataset.dataset = apply_transform_to_dataset(val_dataset.dataset, val_transform)
-    return train_dataset, val_dataset
+    val_subset = DatasetFolderSubset(
+        full_dataset, list(val_subset.indices), val_transform
+    )
+    return train_subset, val_subset
 
 
-def apply_transform_to_dataset(
-    dataset: Dataset, transform: transforms.Compose
-) -> Dataset:
-    dataset = cast(datasets.ImageFolder, dataset)
-    dataset.transform = transform
-    return dataset
+def undersample_dataset(
+    folds: list[Tuple[DatasetFolderSubset, DatasetFolderSubset]],
+    max_samples_per_class: int,
+) -> list[Tuple[DatasetFolderSubset, DatasetFolderSubset]]:
+    undersampled_folds = []
+
+    for train_dataset, val_dataset in folds:
+        class_count = Counter(img[1] for img in train_dataset)
+
+        for _class in class_count:
+            if class_count[_class] > max_samples_per_class:
+                sample_indices = [
+                    i for i, img in enumerate(train_dataset) if img[1] == _class
+                ]
+                sample_indices = random.sample(sample_indices, max_samples_per_class)
+                train_dataset.indices = sample_indices
+
+        undersampled_folds.append((train_dataset, val_dataset))
+
+    return undersampled_folds
+
+
+def oversample_dataset(
+    folds: list[Tuple[DatasetFolderSubset, DatasetFolderSubset]]
+) -> list[Tuple[DatasetFolderSubset, DatasetFolderSubset]]:
+    oversampled_folds = []
+
+    for train_dataset, val_dataset in folds:
+        class_count = Counter(img[1] for img in train_dataset)
+        max_class = max(class_count, key=lambda x: class_count[x])
+
+        for _class in class_count:
+            num_samples_to_add = class_count[max_class] - class_count[_class]
+            sample_indices = [
+                i for i, img in enumerate(train_dataset) if img[1] == _class
+            ]
+
+            for _ in range(num_samples_to_add):
+                sample_index = random.choice(sample_indices)
+                train_dataset.indices.append(sample_index)
+
+        oversampled_folds.append((train_dataset, val_dataset))
+
+    return oversampled_folds
 
 
 def get_dataloaders(
-    train_dataset: Dataset, val_dataset: Dataset, batch_size: int
+    train_dataset: DatasetFolderSubset,
+    val_dataset: DatasetFolderSubset,
+    batch_size: int,
 ) -> Tuple[DataLoader, DataLoader]:
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
@@ -220,11 +278,14 @@ def validate_epoch(
     return val_loss
 
 
-def save_model(model_dir: str, model: nn.Module, classes: list[str]) -> None:
+def save_model(
+    model_dir: str, model: nn.Module, classes: list[str], resize_to: int
+) -> None:
     torch.save(
         {
             "model_state_dict": model.state_dict(),
             "classes": classes,
+            "resize_to": resize_to,
         },
         os.path.join(model_dir, "model.pt"),
     )
@@ -248,6 +309,12 @@ def main() -> None:
         required=True,
     )
     parser.add_argument(
+        "--resize-to",
+        type=int,
+        help="Size to resize the images to.",
+        default=480,
+    )
+    parser.add_argument(
         "--epochs",
         type=int,
         help="Number of epochs to train the model.",
@@ -257,13 +324,25 @@ def main() -> None:
         "--batch-size",
         type=int,
         help="Number of images per batch.",
-        default=32,
+        default=16,
     )
     parser.add_argument(
         "--n-splits",
         type=int,
         help="Number of folds for cross-validation. If 1, holdout validation is used.",
         default=1,
+    )
+    parser.add_argument(
+        "--max-samples-per-class",
+        type=int,
+        help="Maximum number of samples per class to use for training. "
+        "If 0, all samples are used.",
+        default=0,
+    )
+    parser.add_argument(
+        "--oversample",
+        action="store_true",
+        help="Oversample the dataset to balance the classes.",
     )
     args = parser.parse_args()
 
@@ -279,9 +358,12 @@ def main() -> None:
     train(
         args.data_dir,
         args.model_dir,
+        args.resize_to,
         args.epochs,
         args.batch_size,
         args.n_splits,
+        args.max_samples_per_class,
+        args.oversample,
         device,
     )
 
