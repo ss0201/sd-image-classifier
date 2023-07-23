@@ -1,4 +1,5 @@
 import logging
+from typing import cast
 
 import torch
 import torch.utils.data
@@ -9,9 +10,16 @@ from torchvision.models import EfficientNet_V2_M_Weights
 
 def create_model(device: torch.device, num_classes: int) -> nn.Module:
     model = models.efficientnet_v2_m(weights=EfficientNet_V2_M_Weights.DEFAULT)
+    lastconv_output_channels = cast(nn.Linear, model.classifier[1]).in_features
     model.classifier = nn.Sequential(
-        nn.Dropout(0.3),
-        nn.Linear(1280, num_classes),
+        nn.Dropout(p=0.3, inplace=True),
+        nn.Linear(lastconv_output_channels, 512),
+        nn.ReLU(),
+        nn.Dropout(0.5),
+        nn.Linear(512, 128),
+        nn.ReLU(),
+        nn.Dropout(0.5),
+        nn.Linear(128, num_classes),
     )
     return model.to(device)
 
