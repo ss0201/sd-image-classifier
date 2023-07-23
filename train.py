@@ -27,6 +27,7 @@ def train(
     n_splits: int,
     max_samples_per_class: int,
     oversample: bool,
+    freeze_pretrained_layers: bool,
     device: torch.device,
 ) -> None:
     train_transform = get_train_transform(resize_to)
@@ -44,7 +45,9 @@ def train(
             train_dataset, val_dataset, batch_size
         )
 
-        model = create_model(device, len(full_dataset.classes))
+        model = create_model(
+            device, len(full_dataset.classes), freeze_pretrained_layers
+        )
         optimizer = get_optimizer(model)
         scheduler = get_scheduler(optimizer, epochs, len(train_dataloader))
         criterion = get_criterion(device, train_dataset.dataset_folder)
@@ -263,7 +266,7 @@ def main() -> None:
         "--batch-size",
         type=int,
         help="Number of images per batch.",
-        default=16,
+        default=32,
     )
     parser.add_argument(
         "--n-splits",
@@ -282,6 +285,11 @@ def main() -> None:
         "--oversample",
         action="store_true",
         help="Oversample the dataset to balance the classes.",
+    )
+    parser.add_argument(
+        "--unfreeze-pretrained",
+        action="store_true",
+        help="Unfreeze the weights of the pretrained layers.",
     )
     args = parser.parse_args()
 
@@ -303,6 +311,7 @@ def main() -> None:
         args.n_splits,
         args.max_samples_per_class,
         args.oversample,
+        not args.unfreeze_pretrained,
         device,
     )
 

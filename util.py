@@ -12,19 +12,25 @@ from torchvision.transforms import _functional_pil as F_pil
 from torchvision.transforms import functional as F
 
 
-def create_model(device: torch.device, num_classes: int) -> nn.Module:
+def create_model(
+    device: torch.device, num_classes: int, freeze_pretrained_layers: bool = True
+) -> nn.Module:
     model = models.efficientnet_v2_m(weights=EfficientNet_V2_M_Weights.DEFAULT)
-    model.requires_grad_(False)
+    if freeze_pretrained_layers:
+        model.requires_grad_(False)
 
     lastconv_output_channels = cast(nn.Linear, model.classifier[1]).in_features
     model.classifier = nn.Sequential(
-        nn.Dropout(p=0.3, inplace=True),
+        nn.Dropout(0.3, inplace=True),
         nn.Linear(lastconv_output_channels, 512),
         nn.ReLU(),
-        nn.Dropout(0.5),
+        nn.Dropout(0.3),
+        nn.Linear(512, 512),
+        nn.ReLU(),
+        nn.Dropout(0.3),
         nn.Linear(512, 128),
         nn.ReLU(),
-        nn.Dropout(0.5),
+        nn.Dropout(0.3),
         nn.Linear(128, num_classes),
     ).requires_grad_(True)
 
