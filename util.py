@@ -7,7 +7,7 @@ from PIL.Image import Image
 from torch import nn
 from torchvision import models, transforms
 from torchvision.models import EfficientNet_V2_M_Weights
-from torchvision.transforms import functional_pil as F_pil
+from torchvision.transforms import _functional_pil as F_pil
 
 
 def create_model(device: torch.device, num_classes: int) -> nn.Module:
