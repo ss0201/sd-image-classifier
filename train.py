@@ -153,17 +153,24 @@ def undersample_dataset(
     undersampled_folds = []
 
     for train_dataset, val_dataset in folds:
-        class_count = Counter(img[1] for img in train_dataset)
+        class_count = Counter(
+            [sample[1] for sample in train_dataset.dataset_folder.samples]
+        )
 
+        new_train_dataset = DatasetFolderSubset(
+            train_dataset.dataset_folder, [], train_dataset.transform
+        )
         for _class in class_count:
             if class_count[_class] > max_samples_per_class:
                 sample_indices = [
-                    i for i, img in enumerate(train_dataset) if img[1] == _class
+                    i
+                    for i, sample in enumerate(train_dataset.dataset_folder.samples)
+                    if sample[1] == _class
                 ]
                 sample_indices = random.sample(sample_indices, max_samples_per_class)
-                train_dataset.indices = sample_indices
+                new_train_dataset.indices = sample_indices
 
-        undersampled_folds.append((train_dataset, val_dataset))
+        undersampled_folds.append((new_train_dataset, val_dataset))
 
     return undersampled_folds
 
@@ -174,20 +181,29 @@ def oversample_dataset(
     oversampled_folds = []
 
     for train_dataset, val_dataset in folds:
-        class_count = Counter(img[1] for img in train_dataset)
+        class_count = Counter(
+            [sample[1] for sample in train_dataset.dataset_folder.samples]
+        )
         max_class = max(class_count, key=lambda x: class_count[x])
 
+        new_train_dataset = DatasetFolderSubset(
+            train_dataset.dataset_folder,
+            train_dataset.indices.copy(),
+            train_dataset.transform,
+        )
         for _class in class_count:
             num_samples_to_add = class_count[max_class] - class_count[_class]
             sample_indices = [
-                i for i, img in enumerate(train_dataset) if img[1] == _class
+                i
+                for i, sample in enumerate(train_dataset.dataset_folder.samples)
+                if sample[1] == _class
             ]
 
             for _ in range(num_samples_to_add):
                 sample_index = random.choice(sample_indices)
-                train_dataset.indices.append(sample_index)
+                new_train_dataset.indices.append(sample_index)
 
-        oversampled_folds.append((train_dataset, val_dataset))
+        oversampled_folds.append((new_train_dataset, val_dataset))
 
     return oversampled_folds
 
@@ -207,7 +223,7 @@ def get_criterion(
     device: torch.device, full_dataset: datasets.ImageFolder
 ) -> nn.CrossEntropyLoss:
     class_count = [0] * len(full_dataset.classes)
-    for _, class_idx in full_dataset:
+    for _, class_idx in full_dataset.samples:
         class_count[class_idx] += 1
     class_weights = 1.0 / torch.tensor(class_count, dtype=torch.float)
     class_weights_normalized = (class_weights / class_weights.sum()).to(device)
