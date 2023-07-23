@@ -34,7 +34,7 @@ def classify(
     transform = get_val_transform(resize_to)
 
     for file in os.listdir(data_dir):
-        raw_image = Image.open(os.path.join(data_dir, file))
+        raw_image = Image.open(os.path.join(data_dir, file), mode="r").convert("RGB")
         image = cast(torch.Tensor, transform(raw_image))
         image = torch.unsqueeze(image, 0)
 
