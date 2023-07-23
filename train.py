@@ -2,9 +2,7 @@ import argparse
 import copy
 import logging
 import os
-import random
 import sys
-from collections import Counter
 from typing import Tuple, cast
 
 import torch
@@ -15,6 +13,7 @@ from torch.optim.lr_scheduler import LRScheduler, OneCycleLR
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
+from balanced_image_folder import BalancedImageFolder
 from subset_with_transform import DatasetFolderSubset
 from util import create_model, get_device, get_train_transform, get_val_transform
 
@@ -32,15 +31,8 @@ def train(
 ) -> None:
     train_transform = get_train_transform(resize_to)
     val_transform = get_val_transform(resize_to)
-    full_dataset = datasets.ImageFolder(data_dir)
-    folds = create_datasets(
-        full_dataset,
-        n_splits,
-        train_transform,
-        val_transform,
-        max_samples_per_class,
-        oversample,
-    )
+    full_dataset = BalancedImageFolder(data_dir, max_samples_per_class, oversample)
+    folds = create_datasets(full_dataset, n_splits, train_transform, val_transform)
 
     best_model = None
     best_val_loss = float("inf")
@@ -87,8 +79,6 @@ def create_datasets(
     n_splits: int,
     train_transform: transforms.Compose,
     val_transform: transforms.Compose,
-    max_samples_per_class: int,
-    oversample: bool,
 ) -> list[Tuple[DatasetFolderSubset, DatasetFolderSubset]]:
     if n_splits > 1:
         folds = create_datasets_by_kfold(
@@ -99,11 +89,6 @@ def create_datasets(
             full_dataset, train_transform, val_transform
         )
         folds = [(train_dataset, val_dataset)]
-
-    if max_samples_per_class > 0:
-        folds = undersample_dataset(folds, max_samples_per_class)
-    if oversample:
-        folds = oversample_dataset(folds)
 
     return folds
 
@@ -144,68 +129,6 @@ def create_datasets_by_holdout(
         full_dataset, list(val_subset.indices), val_transform
     )
     return train_subset, val_subset
-
-
-def undersample_dataset(
-    folds: list[Tuple[DatasetFolderSubset, DatasetFolderSubset]],
-    max_samples_per_class: int,
-) -> list[Tuple[DatasetFolderSubset, DatasetFolderSubset]]:
-    undersampled_folds = []
-
-    for train_dataset, val_dataset in folds:
-        class_count = Counter(
-            [sample[1] for sample in train_dataset.dataset_folder.samples]
-        )
-
-        new_train_dataset = DatasetFolderSubset(
-            train_dataset.dataset_folder, [], train_dataset.transform
-        )
-        for _class in class_count:
-            if class_count[_class] > max_samples_per_class:
-                sample_indices = [
-                    i
-                    for i, sample in enumerate(train_dataset.dataset_folder.samples)
-                    if sample[1] == _class
-                ]
-                sample_indices = random.sample(sample_indices, max_samples_per_class)
-                new_train_dataset.indices = sample_indices
-
-        undersampled_folds.append((new_train_dataset, val_dataset))
-
-    return undersampled_folds
-
-
-def oversample_dataset(
-    folds: list[Tuple[DatasetFolderSubset, DatasetFolderSubset]]
-) -> list[Tuple[DatasetFolderSubset, DatasetFolderSubset]]:
-    oversampled_folds = []
-
-    for train_dataset, val_dataset in folds:
-        class_count = Counter(
-            [sample[1] for sample in train_dataset.dataset_folder.samples]
-        )
-        max_class = max(class_count, key=lambda x: class_count[x])
-
-        new_train_dataset = DatasetFolderSubset(
-            train_dataset.dataset_folder,
-            train_dataset.indices.copy(),
-            train_dataset.transform,
-        )
-        for _class in class_count:
-            num_samples_to_add = class_count[max_class] - class_count[_class]
-            sample_indices = [
-                i
-                for i, sample in enumerate(train_dataset.dataset_folder.samples)
-                if sample[1] == _class
-            ]
-
-            for _ in range(num_samples_to_add):
-                sample_index = random.choice(sample_indices)
-                new_train_dataset.indices.append(sample_index)
-
-        oversampled_folds.append((new_train_dataset, val_dataset))
-
-    return oversampled_folds
 
 
 def get_dataloaders(
