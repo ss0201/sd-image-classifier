@@ -41,7 +41,6 @@ def train(
         max_samples_per_class,
         oversample,
     )
-    criterion = get_criterion(device, full_dataset)
 
     best_model = None
     best_val_loss = float("inf")
@@ -56,6 +55,7 @@ def train(
         model = create_model(device, len(full_dataset.classes))
         optimizer = get_optimizer(model)
         scheduler = get_scheduler(optimizer, epochs, len(train_dataloader))
+        criterion = get_criterion(device, train_dataset.dataset_folder)
 
         for epoch in range(epochs):
             logging.info(f"Starting epoch {epoch + 1}...")
@@ -220,10 +220,10 @@ def get_dataloaders(
 
 
 def get_criterion(
-    device: torch.device, full_dataset: datasets.ImageFolder
+    device: torch.device, dataset: datasets.DatasetFolder
 ) -> nn.CrossEntropyLoss:
-    class_count = [0] * len(full_dataset.classes)
-    for _, class_idx in full_dataset.samples:
+    class_count = [0] * len(dataset.classes)
+    for _, class_idx in dataset.samples:
         class_count[class_idx] += 1
     class_weights = 1.0 / torch.tensor(class_count, dtype=torch.float)
     class_weights_normalized = (class_weights / class_weights.sum()).to(device)
