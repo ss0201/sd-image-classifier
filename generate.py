@@ -7,7 +7,7 @@ from PIL import Image, PngImagePlugin
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("prompt", required=True)
+    parser.add_argument("prompt")
     parser.add_argument("--negative-prompt", default="")
     parser.add_argument("--seed", default=-1, type=int)
     parser.add_argument("--cfg-scale", default=7, type=int)
@@ -15,6 +15,7 @@ def main():
     parser.add_argument("--steps", default=20, type=int)
     parser.add_argument("--width", default=512, type=int)
     parser.add_argument("--height", default=512, type=int)
+    parser.add_argument("--batch-size", default=1, type=int)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", default=7860, type=int)
     args = parser.parse_args()
@@ -30,19 +31,20 @@ def main():
         steps=args.steps,
         width=args.width,
         height=args.height,
+        batch_size=args.batch_size,
     )
     result = cast(webuiapi.WebUIApiResult, result)
 
-    for image in result.images:
+    for i, image in enumerate(result.images):
         image = cast(Image.Image, image)
 
         pnginfo = PngImagePlugin.PngInfo()
         for key, value in result.info.items():
             if isinstance(key, str) and isinstance(value, str):
                 pnginfo.add_text(key, str(value))
-        pnginfo.add_text("parameters", result.info["infotexts"][0])
+        pnginfo.add_text("parameters", str(result.info["infotexts"][i]))
 
-        image.save("tmp/output.png", pnginfo=pnginfo)
+        image.save(f"tmp/output{i}.png", pnginfo=pnginfo)
 
 
 if __name__ == "__main__":
