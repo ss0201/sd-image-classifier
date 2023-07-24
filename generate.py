@@ -7,68 +7,7 @@ import webuiapi
 from PIL import Image, PngImagePlugin
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-        description="Generate images using Stable Diffusion.",
-    )
-
-    parser.add_argument(
-        "--host",
-        default="127.0.0.1",
-        help="The host running the web UI.",
-    )
-    parser.add_argument(
-        "--port", default=7860, type=int, help="The port number of the web UI."
-    )
-    parser.add_argument(
-        "--output-dir",
-        default="tmp",
-        help="The directory to save the generated images.",
-    )
-    parser.add_argument(
-        "--iterations",
-        default=1,
-        type=int,
-        help="The number of times to generate images. "
-        "Set to -1 for infinite iterations.",
-    )
-
-    sd_group = parser.add_argument_group("stable diffusion parameters")
-    sd_group.add_argument(
-        "--prompt", required=True, help="The prompt to generate images from."
-    )
-    sd_group.add_argument("--negative-prompt", default="", help="The negative prompt.")
-    sd_group.add_argument(
-        "--seed",
-        default=-1,
-        type=int,
-        help="The seed to use for image generation.",
-    )
-    sd_group.add_argument(
-        "--cfg-scale", default=7, type=int, help="Classifier free guidance scale."
-    )
-    sd_group.add_argument(
-        "--sampler-name", default="Euler a", help="The name of the sampler."
-    )
-    sd_group.add_argument("--steps", default=20, type=int, help="The number of steps.")
-    sd_group.add_argument(
-        "--width", default=512, type=int, help="The width of the generated images."
-    )
-    sd_group.add_argument(
-        "--height", default=512, type=int, help="The height of the generated images."
-    )
-    sd_group.add_argument(
-        "--batch-size",
-        default=1,
-        type=int,
-        help="The batch size to use for generating images.",
-    )
-
-    args = parser.parse_args()
-
-    logging.basicConfig(level=logging.INFO)
-
+def generate_images(args: argparse.Namespace):
     api = webuiapi.WebUIApi(host=args.host, port=args.port)
     start_image_id = get_next_image_id(args.output_dir)
     generator = ImageGenerator(
@@ -132,6 +71,71 @@ class ImageGenerator:
             filename = os.path.join(self.output_dir, f"{self.image_id:06}.png")
             image.save(filename, pnginfo=pnginfo)
             self.image_id += 1
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description="Generate images using Stable Diffusion.",
+    )
+
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="The host running the web UI.",
+    )
+    parser.add_argument(
+        "--port", default=7860, type=int, help="The port number of the web UI."
+    )
+    parser.add_argument(
+        "--output-dir",
+        default="tmp",
+        help="The directory to save the generated images.",
+    )
+    parser.add_argument(
+        "--iterations",
+        default=1,
+        type=int,
+        help="The number of times to generate images. "
+        "Set to -1 for infinite iterations.",
+    )
+
+    sd_group = parser.add_argument_group("stable diffusion parameters")
+    sd_group.add_argument(
+        "--prompt", required=True, help="The prompt to generate images from."
+    )
+    sd_group.add_argument("--negative-prompt", default="", help="The negative prompt.")
+    sd_group.add_argument(
+        "--seed",
+        default=-1,
+        type=int,
+        help="The seed to use for image generation.",
+    )
+    sd_group.add_argument(
+        "--cfg-scale", default=7, type=int, help="Classifier free guidance scale."
+    )
+    sd_group.add_argument(
+        "--sampler-name", default="Euler a", help="The name of the sampler."
+    )
+    sd_group.add_argument("--steps", default=20, type=int, help="The number of steps.")
+    sd_group.add_argument(
+        "--width", default=512, type=int, help="The width of the generated images."
+    )
+    sd_group.add_argument(
+        "--height", default=512, type=int, help="The height of the generated images."
+    )
+    sd_group.add_argument(
+        "--batch-size",
+        default=1,
+        type=int,
+        help="The batch size to use for generating images.",
+    )
+
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.INFO)
+
+    generate_images(args)
 
 
 if __name__ == "__main__":
