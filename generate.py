@@ -1,5 +1,6 @@
 import argparse
 import logging
+import os
 from typing import cast
 
 import webuiapi
@@ -69,14 +70,11 @@ def main():
     logging.basicConfig(level=logging.INFO)
 
     api = webuiapi.WebUIApi(host=args.host, port=args.port)
-    i = 0
-    while i < args.iterations or args.iterations == -1:
-        generate(api, args)
-        i += 1
-
-
-def generate(api: webuiapi.WebUIApi, args: argparse.Namespace):
-    result = api.txt2img(
+    start_image_id = get_next_image_id(args.output_dir)
+    generator = ImageGenerator(
+        api,
+        start_image_id,
+        args.output_dir,
         prompt=args.prompt,
         negative_prompt=args.negative_prompt,
         seed=args.seed,
@@ -87,18 +85,53 @@ def generate(api: webuiapi.WebUIApi, args: argparse.Namespace):
         height=args.height,
         batch_size=args.batch_size,
     )
-    result = cast(webuiapi.WebUIApiResult, result)
+    itr = 0
+    while itr < args.iterations or args.iterations == -1:
+        logging.info(f"Generating images (iteration {itr})...")
+        generator.generate()
+        itr += 1
 
-    for i, image in enumerate(result.images):
-        image = cast(Image.Image, image)
 
-        pnginfo = PngImagePlugin.PngInfo()
-        for key, value in result.info.items():
-            if isinstance(key, str) and isinstance(value, str):
-                pnginfo.add_text(key, str(value))
-        pnginfo.add_text("parameters", str(result.info["infotexts"][i]))
+def get_next_image_id(output_dir: str) -> int:
+    last_image_id = 0
+    for filename in os.listdir(output_dir):
+        if not filename.endswith(".png"):
+            continue
+        try:
+            image_id = int(os.path.splitext(filename)[0])
+        except ValueError:
+            continue
+        if image_id > last_image_id:
+            last_image_id = image_id
 
-        image.save(f"tmp/output{i}.png", pnginfo=pnginfo)
+    return last_image_id + 1
+
+
+class ImageGenerator:
+    def __init__(
+        self, api: webuiapi.WebUIApi, start_image_id: int, output_dir: str, **kwargs
+    ):
+        self.api = api
+        self.image_id = start_image_id
+        self.output_dir = output_dir
+        self.kwargs = kwargs
+
+    def generate(self):
+        result = self.api.txt2img(**self.kwargs)
+        result = cast(webuiapi.WebUIApiResult, result)
+
+        for i, image in enumerate(result.images):
+            image = cast(Image.Image, image)
+
+            pnginfo = PngImagePlugin.PngInfo()
+            for key, value in result.info.items():
+                if isinstance(key, str) and isinstance(value, str):
+                    pnginfo.add_text(key, str(value))
+            pnginfo.add_text("parameters", str(result.info["infotexts"][i]))
+
+            filename = os.path.join(self.output_dir, f"{self.image_id:06}.png")
+            image.save(filename, pnginfo=pnginfo)
+            self.image_id += 1
 
 
 if __name__ == "__main__":
