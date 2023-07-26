@@ -3,17 +3,26 @@ import logging
 import os
 from typing import cast
 
+import torch
 import webuiapi
 from PIL import Image, PngImagePlugin
 
+from classify import load_model, predict_classification
+from util import get_device, get_val_transform
+
 
 def generate_images(args: argparse.Namespace):
+    os.makedirs(args.output_dir, exist_ok=True)
+
     api = webuiapi.WebUIApi(host=args.host, port=args.port)
     start_image_id = get_next_image_id(args.output_dir)
+    device = get_device()
     generator = ImageGenerator(
         api,
         start_image_id,
         args.output_dir,
+        model_path=args.model_path,
+        device=device,
         prompt=args.prompt,
         negative_prompt=args.negative_prompt,
         seed=args.seed,
@@ -24,6 +33,7 @@ def generate_images(args: argparse.Namespace):
         height=args.height,
         batch_size=args.batch_size,
     )
+
     itr = 0
     while itr < args.iterations or args.iterations == -1:
         logging.info(f"Generating images (iteration {itr})...")
@@ -33,27 +43,38 @@ def generate_images(args: argparse.Namespace):
 
 def get_next_image_id(output_dir: str) -> int:
     last_image_id = 0
-    for filename in os.listdir(output_dir):
-        if not filename.endswith(".png"):
-            continue
-        try:
-            image_id = int(os.path.splitext(filename)[0])
-        except ValueError:
-            continue
-        if image_id > last_image_id:
-            last_image_id = image_id
+    for _, _, files in os.walk(output_dir):
+        for filename in files:
+            if not filename.endswith(".png"):
+                continue
+            try:
+                image_id = int(os.path.splitext(filename)[0])
+            except ValueError:
+                continue
+            if image_id > last_image_id:
+                last_image_id = image_id
 
     return last_image_id + 1
 
 
 class ImageGenerator:
     def __init__(
-        self, api: webuiapi.WebUIApi, start_image_id: int, output_dir: str, **kwargs
+        self,
+        api: webuiapi.WebUIApi,
+        start_image_id: int,
+        output_dir: str,
+        model_path: str,
+        device: torch.device,
+        **kwargs,
     ):
         self.api = api
         self.image_id = start_image_id
         self.output_dir = output_dir
+        self.model_path = model_path
         self.kwargs = kwargs
+        self.device = device
+        self.model, self.classes, self.resize_to = load_model(self.model_path, device)
+        self.transform = get_val_transform(self.resize_to)
 
     def generate(self):
         result = self.api.txt2img(**self.kwargs)
@@ -61,16 +82,34 @@ class ImageGenerator:
 
         for i, image in enumerate(result.images):
             image = cast(Image.Image, image)
+            pnginfo = self.create_pnginfo(result.info, i)
 
-            pnginfo = PngImagePlugin.PngInfo()
-            for key, value in result.info.items():
-                if isinstance(key, str) and isinstance(value, str):
-                    pnginfo.add_text(key, str(value))
-            pnginfo.add_text("parameters", str(result.info["infotexts"][i]))
+            class_name, _ = predict_classification(
+                image, self.transform, self.model, self.classes, self.device
+            )
+            self.save_image(image, pnginfo, class_name)
 
-            filename = os.path.join(self.output_dir, f"{self.image_id:06}.png")
-            image.save(filename, pnginfo=pnginfo)
             self.image_id += 1
+
+    def create_pnginfo(self, api_result_info: dict, i: int) -> PngImagePlugin.PngInfo:
+        pnginfo = PngImagePlugin.PngInfo()
+        for key, value in api_result_info.items():
+            if isinstance(key, str) and isinstance(value, str):
+                pnginfo.add_text(key, str(value))
+        pnginfo.add_text("parameters", str(api_result_info["infotexts"][i]))
+        return pnginfo
+
+    def save_image(
+        self,
+        image: Image.Image,
+        pnginfo: PngImagePlugin.PngInfo,
+        class_name: str,
+    ) -> None:
+        class_dir = os.path.join(self.output_dir, class_name)
+        os.makedirs(class_dir, exist_ok=True)
+
+        filename = os.path.join(class_dir, f"{self.image_id:06}.png")
+        image.save(filename, pnginfo=pnginfo)
 
 
 def main():
@@ -88,8 +127,13 @@ def main():
         "--port", default=7860, type=int, help="The port number of the web UI."
     )
     parser.add_argument(
+        "--model-path",
+        required=True,
+        help="The path to the model to use for classification.",
+    )
+    parser.add_argument(
         "--output-dir",
-        default="tmp",
+        required=True,
         help="The directory to save the generated images.",
     )
     parser.add_argument(
