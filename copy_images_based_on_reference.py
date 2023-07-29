@@ -33,7 +33,7 @@ def copy_src_files_to_work_dir_based_on_reference(
                 (
                     src_file,
                     work_dir,
-                    src_dirs,
+                    src_dir,
                     reference_dirs,
                     similarity_threshold,
                     file_cache,
