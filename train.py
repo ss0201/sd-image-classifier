@@ -8,6 +8,9 @@ from typing import Tuple, cast
 import torch
 import torch.utils.data
 from sklearn.model_selection import KFold
+from skorch.callbacks import Callback
+from spacecutter.callbacks import AscensionCallback
+from spacecutter.losses import CumulativeLinkLoss
 from torch import nn, optim
 from torch.optim.lr_scheduler import LRScheduler, OneCycleLR
 from torch.utils.data import DataLoader
@@ -15,12 +18,20 @@ from torchvision import datasets, transforms
 
 from balanced_image_folder import BalancedImageFolder
 from dataset_folder_subset import DatasetFolderSubset
-from util import create_model, get_device, get_train_transform, get_val_transform
+from util import (
+    TASK_CLASSIFICATION,
+    TASK_ORDINAL_REGRESSION,
+    create_model,
+    get_device,
+    get_train_transform,
+    get_val_transform,
+)
 
 
 def train(
     data_dir: str,
     model_dir: str,
+    task_type: str,
     resize_to: int,
     epochs: int,
     batch_size: int,
@@ -34,6 +45,7 @@ def train(
     val_transform = get_val_transform(resize_to)
     full_dataset = BalancedImageFolder(data_dir, max_samples_per_class, oversample)
     folds = create_datasets(full_dataset, n_splits, train_transform, val_transform)
+    callback = AscensionCallback() if task_type == TASK_ORDINAL_REGRESSION else None
 
     best_model = None
     best_val_loss = float("inf")
@@ -46,15 +58,15 @@ def train(
         )
 
         model = create_model(
-            device, len(full_dataset.classes), freeze_pretrained_layers
+            device, len(full_dataset.classes), task_type, freeze_pretrained_layers
         )
         optimizer = get_optimizer(model)
         scheduler = get_scheduler(optimizer, epochs, len(train_dataloader))
-        criterion = get_criterion(device, train_dataset.dataset_folder)
+        criterion = get_criterion(device, train_dataset.dataset_folder, task_type)
 
         for epoch in range(epochs):
             logging.info(f"Starting epoch {epoch + 1}...")
-            train_epoch(device, model, criterion, optimizer, train_dataloader)
+            train_epoch(device, model, criterion, optimizer, train_dataloader, callback)
             val_loss = validate_epoch(device, model, criterion, val_dataloader)
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
@@ -146,15 +158,20 @@ def get_dataloaders(
 
 
 def get_criterion(
-    device: torch.device, dataset: datasets.DatasetFolder
-) -> nn.CrossEntropyLoss:
+    device: torch.device, dataset: datasets.DatasetFolder, task_type: str
+) -> nn.Module:
     class_count = [0] * len(dataset.classes)
     for _, class_idx in dataset.samples:
         class_count[class_idx] += 1
     class_weights = 1.0 / torch.tensor(class_count, dtype=torch.float)
     class_weights_normalized = (class_weights / class_weights.sum()).to(device)
 
-    return nn.CrossEntropyLoss(weight=class_weights_normalized)
+    if task_type == TASK_CLASSIFICATION:
+        return nn.CrossEntropyLoss(weight=class_weights_normalized)
+    elif task_type == TASK_ORDINAL_REGRESSION:
+        return CumulativeLinkLoss(class_weights=class_weights_normalized)
+    else:
+        raise ValueError(f"Invalid task type: {task_type}")
 
 
 def get_optimizer(model: nn.Module) -> optim.Optimizer:
@@ -172,9 +189,10 @@ def get_scheduler(
 def train_epoch(
     device: torch.device,
     model: nn.Module,
-    criterion: nn.CrossEntropyLoss,
+    criterion: nn.Module,
     optimizer: optim.Optimizer,
     train_dataloader: DataLoader,
+    callback: Callback | None = None,
 ) -> float:
     model.train()
     train_loss = 0.0
@@ -187,6 +205,8 @@ def train_epoch(
         loss: torch.Tensor = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
+        if callback is not None:
+            callback.on_batch_end(model, None, None)
 
         train_loss += loss.item()
         if i % 10 == 0:
@@ -201,7 +221,7 @@ def train_epoch(
 def validate_epoch(
     device: torch.device,
     model: nn.Module,
-    criterion: nn.CrossEntropyLoss,
+    criterion: nn.Module,
     val_dataloader: DataLoader,
 ) -> float:
     model.eval()
@@ -211,7 +231,7 @@ def validate_epoch(
             inputs = inputs.to(device)
             labels = labels.to(device)
             outputs = model(inputs)
-            loss = criterion(outputs, labels)
+            loss: torch.Tensor = criterion(outputs, labels)
             val_loss += loss.item()
 
     val_loss /= len(val_dataloader)
@@ -240,15 +260,19 @@ def main() -> None:
     )
     parser.add_argument(
         "--data-dir",
-        type=str,
         help="Directory containing the training data.",
         required=True,
     )
     parser.add_argument(
         "--model-dir",
-        type=str,
         help="Directory to save the trained model.",
         required=True,
+    )
+    parser.add_argument(
+        "--task-type",
+        default=TASK_CLASSIFICATION,
+        help="Type of task to train the model for. "
+        f"Available options: {TASK_CLASSIFICATION}, {TASK_ORDINAL_REGRESSION}.",
     )
     parser.add_argument(
         "--resize-to",
@@ -305,6 +329,7 @@ def main() -> None:
     train(
         args.data_dir,
         args.model_dir,
+        args.task_type,
         args.resize_to,
         args.epochs,
         args.batch_size,

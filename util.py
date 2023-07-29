@@ -5,21 +5,29 @@ from typing import cast
 import torch
 import torch.utils.data
 from PIL.Image import Image
+from spacecutter.models import OrdinalLogisticModel
 from torch import nn
 from torchvision import models, transforms
 from torchvision.models import EfficientNet_V2_M_Weights
 from torchvision.transforms import _functional_pil as F_pil
 from torchvision.transforms import functional as F
 
+TASK_CLASSIFICATION = "classification"
+TASK_ORDINAL_REGRESSION = "ordinal-regression"
+
 
 def create_model(
-    device: torch.device, num_classes: int, freeze_pretrained_layers: bool = True
+    device: torch.device,
+    num_classes: int,
+    task_type: str,
+    freeze_pretrained_layers: bool = True,
 ) -> nn.Module:
     model = models.efficientnet_v2_m(weights=EfficientNet_V2_M_Weights.DEFAULT)
     if freeze_pretrained_layers:
         model.requires_grad_(False)
 
     lastconv_output_channels = cast(nn.Linear, model.classifier[1]).in_features
+    final_output_channels = 1 if task_type == TASK_ORDINAL_REGRESSION else num_classes
     model.classifier = nn.Sequential(
         nn.Dropout(0.3, inplace=True),
         nn.Linear(lastconv_output_channels, 512),
@@ -31,8 +39,11 @@ def create_model(
         nn.Linear(512, 128),
         nn.ReLU(),
         nn.Dropout(0.3),
-        nn.Linear(128, num_classes),
+        nn.Linear(128, final_output_channels),
     ).requires_grad_(True)
+
+    if task_type == TASK_ORDINAL_REGRESSION:
+        model = OrdinalLogisticModel(model, num_classes)
 
     return model.to(device)
 
