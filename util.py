@@ -15,6 +15,8 @@ from torchvision.transforms import functional as F
 TASK_CLASSIFICATION = "classification"
 TASK_ORDINAL_REGRESSION = "ordinal-regression"
 
+DatasetFolderItem = tuple[Image, int]
+
 
 def create_model(
     device: torch.device,

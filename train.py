@@ -20,6 +20,7 @@ from dataset_folder_subset import DatasetFolderSubset
 from util import (
     TASK_CLASSIFICATION,
     TASK_ORDINAL_REGRESSION,
+    DatasetFolderItem,
     create_model,
     get_device,
     get_train_transform,
@@ -149,7 +150,7 @@ def get_dataloaders(
     train_dataset: DatasetFolderSubset,
     val_dataset: DatasetFolderSubset,
     batch_size: int,
-) -> Tuple[DataLoader, DataLoader]:
+) -> Tuple[DataLoader[DatasetFolderItem], DataLoader[DatasetFolderItem]]:
     train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     val_dataloader = DataLoader(val_dataset, batch_size=batch_size, shuffle=True)
 
@@ -190,7 +191,7 @@ def train_epoch(
     model: nn.Module,
     criterion: nn.Module,
     optimizer: optim.Optimizer,
-    train_dataloader: DataLoader,
+    train_dataloader: DataLoader[DatasetFolderItem],
     callback: Callback | None = None,
 ) -> float:
     model.train()
@@ -221,7 +222,7 @@ def validate_epoch(
     device: torch.device,
     model: nn.Module,
     criterion: nn.Module,
-    val_dataloader: DataLoader,
+    val_dataloader: DataLoader[DatasetFolderItem],
 ) -> float:
     model.eval()
     val_loss = 0

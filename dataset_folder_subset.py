@@ -1,10 +1,12 @@
-from typing import Any, Callable, Optional
+from typing import Callable, Optional
 
 from torch.utils.data import Dataset
 from torchvision.datasets import DatasetFolder
 
+from util import DatasetFolderItem
 
-class DatasetFolderSubset(Dataset):
+
+class DatasetFolderSubset(Dataset[DatasetFolderItem]):
     dataset_folder: DatasetFolder
     indices: list[int]
 
@@ -18,7 +20,7 @@ class DatasetFolderSubset(Dataset):
         self.indices = indices
         self.transform = transform
 
-    def __getitem__(self, index: int) -> tuple[Any, Any]:
+    def __getitem__(self, index: int) -> DatasetFolderItem:
         sample, target = self.dataset_folder[self.indices[index]]
         if self.transform is not None:
             sample = self.transform(sample)
