@@ -18,7 +18,8 @@ def load_model(
     model_state_dict = params["model_state_dict"]
     classes = params["classes"]
     resize_to = params["resize_to"]
-    model = create_model(device, len(classes))
+    task_type = params["task_type"]
+    model = create_model(device, len(classes), task_type)
     model.load_state_dict(model_state_dict)
     model.eval()
     return model, classes, resize_to

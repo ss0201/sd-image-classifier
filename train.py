@@ -83,7 +83,7 @@ def train(
         logging.info(f"Fold {i + 1} validation loss: {val_loss}")
 
     if best_model is not None:
-        save_model(output_path, best_model, full_dataset.classes, resize_to)
+        save_model(output_path, best_model, full_dataset.classes, resize_to, task_type)
     else:
         raise RuntimeError("No model was trained.")
 
@@ -240,13 +240,18 @@ def validate_epoch(
 
 
 def save_model(
-    output_path: str, model: nn.Module, classes: list[str], resize_to: int
+    output_path: str,
+    model: nn.Module,
+    classes: list[str],
+    resize_to: int,
+    task_type: str,
 ) -> None:
     torch.save(
         {
             "model_state_dict": model.state_dict(),
             "classes": classes,
             "resize_to": resize_to,
+            "task_type": task_type,
         },
         output_path,
     )
