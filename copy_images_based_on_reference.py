@@ -12,55 +12,33 @@ from PIL import Image, ImageChops, ImageOps
 UNMATCHED_DIR_NAME = "_unmatched"
 
 
-@lru_cache(maxsize=None)
-def process_image(file: str) -> Image.Image:
-    im = Image.open(file)
-    im = ImageOps.grayscale(im)
-    return im
+def copy_src_files_to_work_dir_based_on_reference(
+    work_dir: str, src_dir: str, reference_dirs: list[str], similarity_threshold: float
+) -> None:
+    processed_dirs = [
+        os.path.join(work_dir, dir_name)
+        for dir_name in [os.path.basename(ref_dir) for ref_dir in reference_dirs]
+        + [UNMATCHED_DIR_NAME]
+    ]
 
+    file_cache = build_file_cache([src_dir] + processed_dirs + reference_dirs)
 
-def calc_image_similarity(file1: str, file2: str) -> float:
-    im1 = process_image(file1)
-    im2 = process_image(file2)
-    diff_histogram = np.array(ImageChops.difference(im1, im2).histogram())
-
-    zero_diff_ratio = diff_histogram[0] / np.sum(diff_histogram)
-    return zero_diff_ratio
-
-
-def build_file_cache(dirs: list[str]) -> dict[str, set[str]]:
-    cache: dict[str, set[str]] = {}
-    for dir in dirs:
-        if os.path.isdir(dir):
-            cache[dir] = set(os.listdir(dir))
-    return cache
-
-
-def find_matching_reference_file(
-    file_path: str,
-    reference_dirs: list[str],
-    similarity_threshold: float,
-    file_cache: dict[str, set[str]],
-) -> tuple[Optional[str], Optional[str], Optional[float]]:
-    # First check if there is a file with the same name in the reference dirs
-    # so we can avoid calculating the similarity for all files in the reference dirs
-    basename = os.path.basename(file_path)
-    for reference_dir in reference_dirs:
-        if basename in file_cache[reference_dir]:
-            reference_file_path = os.path.join(reference_dir, basename)
-            similarity = calc_image_similarity(file_path, reference_file_path)
-            if similarity > similarity_threshold:
-                return reference_dir, basename, similarity
-
-    # Otherwise, check the similarity of all files in the reference dirs
-    for reference_dir in reference_dirs:
-        for reference_file in file_cache[reference_dir]:
-            reference_file_path = os.path.join(reference_dir, reference_file)
-            similarity = calc_image_similarity(file_path, reference_file_path)
-            if similarity > similarity_threshold:
-                return reference_dir, reference_file, similarity
-
-    return None, None, None
+    with multiprocessing.Pool() as pool:
+        pool.starmap(
+            process_file,
+            [
+                (
+                    src_file,
+                    work_dir,
+                    src_dir,
+                    reference_dirs,
+                    similarity_threshold,
+                    file_cache,
+                    processed_dirs,
+                )
+                for src_file in os.listdir(src_dir)
+            ],
+        )
 
 
 def process_file(
@@ -101,33 +79,55 @@ def process_file(
     shutil.copy2(src_file_path, dest_path)
 
 
-def copy_src_files_to_work_dir_based_on_reference(
-    work_dir: str, src_dir: str, reference_dirs: list[str], similarity_threshold: float
-) -> None:
-    processed_dirs = [
-        os.path.join(work_dir, dir_name)
-        for dir_name in [os.path.basename(ref_dir) for ref_dir in reference_dirs]
-        + [UNMATCHED_DIR_NAME]
-    ]
+def find_matching_reference_file(
+    file_path: str,
+    reference_dirs: list[str],
+    similarity_threshold: float,
+    file_cache: dict[str, set[str]],
+) -> tuple[Optional[str], Optional[str], Optional[float]]:
+    # First check if there is a file with the same name in the reference dirs
+    # so we can avoid calculating the similarity for all files in the reference dirs
+    basename = os.path.basename(file_path)
+    for reference_dir in reference_dirs:
+        if basename in file_cache[reference_dir]:
+            reference_file_path = os.path.join(reference_dir, basename)
+            similarity = calc_image_similarity(file_path, reference_file_path)
+            if similarity > similarity_threshold:
+                return reference_dir, basename, similarity
 
-    file_cache = build_file_cache([src_dir] + processed_dirs + reference_dirs)
+    # Otherwise, check the similarity of all files in the reference dirs
+    for reference_dir in reference_dirs:
+        for reference_file in file_cache[reference_dir]:
+            reference_file_path = os.path.join(reference_dir, reference_file)
+            similarity = calc_image_similarity(file_path, reference_file_path)
+            if similarity > similarity_threshold:
+                return reference_dir, reference_file, similarity
 
-    with multiprocessing.Pool() as pool:
-        pool.starmap(
-            process_file,
-            [
-                (
-                    src_file,
-                    work_dir,
-                    src_dir,
-                    reference_dirs,
-                    similarity_threshold,
-                    file_cache,
-                    processed_dirs,
-                )
-                for src_file in os.listdir(src_dir)
-            ],
-        )
+    return None, None, None
+
+
+def build_file_cache(dirs: list[str]) -> dict[str, set[str]]:
+    cache: dict[str, set[str]] = {}
+    for dir in dirs:
+        if os.path.isdir(dir):
+            cache[dir] = set(os.listdir(dir))
+    return cache
+
+
+def calc_image_similarity(file1: str, file2: str) -> float:
+    im1 = process_image(file1)
+    im2 = process_image(file2)
+    diff_histogram = np.array(ImageChops.difference(im1, im2).histogram())
+
+    zero_diff_ratio = diff_histogram[0] / np.sum(diff_histogram)
+    return zero_diff_ratio
+
+
+@lru_cache(maxsize=None)
+def process_image(file: str) -> Image.Image:
+    im = Image.open(file)
+    im = ImageOps.grayscale(im)
+    return im
 
 
 def main():
