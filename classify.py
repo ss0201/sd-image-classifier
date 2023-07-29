@@ -82,11 +82,9 @@ def predict_classification(
         rank_probabilities = torch.sigmoid(outputs)
         rank_probabilities = torch.cumprod(rank_probabilities, dim=1)
         rank_probabilities = torch.squeeze(rank_probabilities, dim=0)
-
-        likelihoods = torch.empty(len(classes), device=device)
-        likelihoods[0] = 1.0 - rank_probabilities[0]
-        likelihoods[1:-1] = rank_probabilities[:-1] - rank_probabilities[1:]
-        likelihoods[-1] = rank_probabilities[-1]
+        likelihoods = torch.cat(
+            (torch.tensor([1.0], device=device), rank_probabilities), dim=0
+        )
 
         return class_name, likelihoods
     else:
