@@ -74,7 +74,9 @@ class ImageGenerator:
         self.model_path = model_path
         self.kwargs = kwargs
         self.device = device
-        self.model, self.classes, self.resize_to = load_model(self.model_path, device)
+        self.model, self.classes, self.resize_to, self.task_type = load_model(
+            self.model_path, device
+        )
         self.transform = get_val_transform(self.resize_to)
 
     def generate(self):
@@ -86,7 +88,12 @@ class ImageGenerator:
             pnginfo = self.create_pnginfo(result.info, i)
 
             class_name, _ = predict_classification(
-                image, self.transform, self.model, self.classes, self.device
+                image,
+                self.transform,
+                self.model,
+                self.classes,
+                self.task_type,
+                self.device,
             )
             self.save_image(image, pnginfo, class_name)
 

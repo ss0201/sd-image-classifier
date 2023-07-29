@@ -4,17 +4,24 @@ import os
 from typing import Tuple, cast
 
 import torch
+from coral_pytorch.dataset import corn_label_from_logits
 from PIL import Image
 from torch import nn
 from torchvision.datasets.folder import is_image_file
 from torchvision.transforms import Compose
 
-from util import create_model, get_device, get_val_transform
+from util import (
+    TASK_CLASSIFICATION,
+    TASK_ORDINAL_REGRESSION,
+    create_model,
+    get_device,
+    get_val_transform,
+)
 
 
 def load_model(
     model_path: str, device: torch.device
-) -> Tuple[nn.Module, list[str], int]:
+) -> Tuple[nn.Module, list[str], int, str]:
     params = torch.load(model_path, map_location=device)
     model_state_dict = params["model_state_dict"]
     classes = params["classes"]
@@ -23,7 +30,7 @@ def load_model(
     model = create_model(device, len(classes), task_type)
     model.load_state_dict(model_state_dict)
     model.eval()
-    return model, classes, resize_to
+    return model, classes, resize_to, task_type
 
 
 def classify_images(
@@ -31,6 +38,7 @@ def classify_images(
     model: nn.Module,
     classes: list[str],
     resize_to: int,
+    task_type: str,
     device: torch.device,
 ) -> None:
     transform = get_val_transform(resize_to)
@@ -40,7 +48,7 @@ def classify_images(
             continue
         raw_image = Image.open(os.path.join(data_dir, file), mode="r").convert("RGB")
         class_name, likelihoods = predict_classification(
-            raw_image, transform, model, classes, device
+            raw_image, transform, model, classes, task_type, device
         )
         logging.info(file)
         logging.info(f"  -> {class_name}")
@@ -54,16 +62,35 @@ def predict_classification(
     transform: Compose,
     model: nn.Module,
     classes: list[str],
+    task_type: str,
     device: torch.device,
 ) -> Tuple[str, torch.Tensor]:
     image = cast(torch.Tensor, transform(pil_image))
     image = torch.unsqueeze(image, 0)
     image = image.to(device)
     outputs: torch.Tensor = model(image)
-    _, predicted = torch.max(outputs.data, 1)
-    class_name = classes[predicted[0]]
-    likelihoods = nn.functional.softmax(outputs, dim=1)[0]
-    return class_name, likelihoods
+
+    if task_type == TASK_CLASSIFICATION:
+        _, predicted = torch.max(outputs.data, 1)
+        class_name = classes[predicted[0]]
+        likelihoods = nn.functional.softmax(outputs, dim=1)[0]
+        return class_name, likelihoods
+    elif task_type == TASK_ORDINAL_REGRESSION:
+        predicted_labels = corn_label_from_logits(outputs).int()
+        class_name = classes[predicted_labels[0]]
+
+        rank_probabilities = torch.sigmoid(outputs)
+        rank_probabilities = torch.cumprod(rank_probabilities, dim=1)
+        rank_probabilities = torch.squeeze(rank_probabilities, dim=0)
+
+        likelihoods = torch.empty(len(classes), device=device)
+        likelihoods[0] = 1.0 - rank_probabilities[0]
+        likelihoods[1:-1] = rank_probabilities[:-1] - rank_probabilities[1:]
+        likelihoods[-1] = rank_probabilities[-1]
+
+        return class_name, likelihoods
+    else:
+        raise ValueError(f"Unknown task type: {task_type}")
 
 
 def main() -> None:
@@ -89,8 +116,8 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
 
     device = get_device()
-    model, classes, resize_to = load_model(args.model, device)
-    classify_images(args.data_dir, model, classes, resize_to, device)
+    model, classes, resize_to, task_type = load_model(args.model, device)
+    classify_images(args.data_dir, model, classes, resize_to, task_type, device)
 
 
 if __name__ == "__main__":

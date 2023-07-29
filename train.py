@@ -6,10 +6,8 @@ from typing import Tuple, cast
 
 import torch
 import torch.utils.data
+from coral_pytorch.losses import CornLoss
 from sklearn.model_selection import KFold
-from skorch.callbacks import Callback
-from spacecutter.callbacks import AscensionCallback
-from spacecutter.losses import CumulativeLinkLoss
 from torch import nn, optim
 from torch.optim.lr_scheduler import LRScheduler, OneCycleLR
 from torch.utils.data import DataLoader
@@ -45,7 +43,6 @@ def train(
     val_transform = get_val_transform(resize_to)
     full_dataset = BalancedImageFolder(data_dir, max_samples_per_class, oversample)
     folds = create_datasets(full_dataset, n_splits, train_transform, val_transform)
-    callback = AscensionCallback() if task_type == TASK_ORDINAL_REGRESSION else None
 
     best_model = None
     best_val_loss = float("inf")
@@ -66,7 +63,7 @@ def train(
 
         for epoch in range(epochs):
             logging.info(f"Starting epoch {epoch + 1}...")
-            train_epoch(device, model, criterion, optimizer, train_dataloader, callback)
+            train_epoch(device, model, criterion, optimizer, train_dataloader)
             val_loss = validate_epoch(device, model, criterion, val_dataloader)
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
@@ -160,16 +157,16 @@ def get_dataloaders(
 def get_criterion(
     device: torch.device, dataset: datasets.DatasetFolder, task_type: str
 ) -> nn.Module:
-    class_count = [0] * len(dataset.classes)
-    for _, class_idx in dataset.samples:
-        class_count[class_idx] += 1
-    class_weights = 1.0 / torch.tensor(class_count, dtype=torch.float)
-    class_weights_normalized = (class_weights / class_weights.sum()).to(device)
-
     if task_type == TASK_CLASSIFICATION:
+        class_count = [0] * len(dataset.classes)
+        for _, class_idx in dataset.samples:
+            class_count[class_idx] += 1
+        class_weights = 1.0 / torch.tensor(class_count, dtype=torch.float)
+        class_weights_normalized = (class_weights / class_weights.sum()).to(device)
+
         return nn.CrossEntropyLoss(weight=class_weights_normalized)
     elif task_type == TASK_ORDINAL_REGRESSION:
-        return CumulativeLinkLoss(class_weights=class_weights_normalized)
+        return CornLoss(len(dataset.classes))
     else:
         raise ValueError(f"Invalid task type: {task_type}")
 
@@ -192,7 +189,6 @@ def train_epoch(
     criterion: nn.Module,
     optimizer: optim.Optimizer,
     train_dataloader: DataLoader[DatasetFolderItem],
-    callback: Callback | None = None,
 ) -> float:
     model.train()
     train_loss = 0.0
@@ -205,8 +201,6 @@ def train_epoch(
         loss: torch.Tensor = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
-        if callback is not None:
-            callback.on_batch_end(model, None, None)
 
         train_loss += loss.item()
         if i % 10 == 0:
