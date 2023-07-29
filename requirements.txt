@@ -1,0 +1,6 @@
+numpy
+Pillow
+scikit_learn
+torch
+torchvision
+webuiapi
