@@ -15,6 +15,7 @@ def generate_images(args: argparse.Namespace):
     os.makedirs(args.output_dir, exist_ok=True)
 
     api = webuiapi.WebUIApi(host=args.host, port=args.port)
+    api.util_set_model(args.sd_model)
     start_image_id = get_next_image_id(args.output_dir)
     device = get_device()
     generator = ImageGenerator(
@@ -149,6 +150,7 @@ def main():
         "--prompt", required=True, help="The prompt to generate images from."
     )
     sd_group.add_argument("--negative-prompt", default="", help="The negative prompt.")
+    sd_group.add_argument("--sd-model", help="The name of the stable diffusion model.")
     sd_group.add_argument(
         "--seed",
         default=-1,
