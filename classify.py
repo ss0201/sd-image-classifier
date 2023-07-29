@@ -6,6 +6,7 @@ from typing import Tuple, cast
 import torch
 from PIL import Image
 from torch import nn
+from torchvision.datasets.folder import is_image_file
 from torchvision.transforms import Compose
 
 from util import create_model, get_device, get_val_transform
@@ -35,6 +36,8 @@ def classify_images(
     transform = get_val_transform(resize_to)
 
     for file in os.listdir(data_dir):
+        if not is_image_file(file):
+            continue
         raw_image = Image.open(os.path.join(data_dir, file), mode="r").convert("RGB")
         class_name, likelihoods = predict_classification(
             raw_image, transform, model, classes, device
