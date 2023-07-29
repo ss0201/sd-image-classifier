@@ -13,7 +13,10 @@ UNMATCHED_DIR_NAME = "_unmatched"
 
 
 def copy_src_files_to_work_dir_based_on_reference(
-    work_dir: str, src_dir: str, reference_dirs: list[str], similarity_threshold: float
+    work_dir: str,
+    src_dirs: list[str],
+    reference_dirs: list[str],
+    similarity_threshold: float,
 ) -> None:
     processed_dirs = [
         os.path.join(work_dir, dir_name)
@@ -21,27 +24,28 @@ def copy_src_files_to_work_dir_based_on_reference(
         + [UNMATCHED_DIR_NAME]
     ]
 
-    file_cache = build_file_cache([src_dir] + processed_dirs + reference_dirs)
+    file_cache = build_file_cache(src_dirs + processed_dirs + reference_dirs)
 
     with multiprocessing.Pool() as pool:
         pool.starmap(
-            process_file,
+            copy_file,
             [
                 (
                     src_file,
                     work_dir,
-                    src_dir,
+                    src_dirs,
                     reference_dirs,
                     similarity_threshold,
                     file_cache,
                     processed_dirs,
                 )
+                for src_dir in src_dirs
                 for src_file in os.listdir(src_dir)
             ],
         )
 
 
-def process_file(
+def copy_file(
     src_file: str,
     work_dir: str,
     src_dir: str,
@@ -67,7 +71,7 @@ def process_file(
         if matching_reference_dir is None
         else os.path.basename(matching_reference_dir)
     )
-    dest_path = os.path.join(work_dir, dest_dir_name, src_file)
+    dest_path = get_unique_dest_path(work_dir, dest_dir_name, src_file)
 
     logging.info(
         f"Copying {src_file}\n"
@@ -77,6 +81,18 @@ def process_file(
 
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
     shutil.copy2(src_file_path, dest_path)
+
+
+def get_unique_dest_path(work_dir: str, dest_dir_name: str, src_file: str) -> str:
+    filename, extension = os.path.splitext(src_file)
+    i = 0
+    while True:
+        unique_filename = f"{filename}_{i}{extension}" if i > 0 else src_file
+        dest_path = os.path.join(work_dir, dest_dir_name, unique_filename)
+        if not os.path.exists(dest_path):
+            break
+        i += 1
+    return dest_path
 
 
 def find_matching_reference_file(
@@ -144,9 +160,10 @@ def main():
         required=True,
     )
     dirs_group.add_argument(
-        "--src-dir",
+        "--src-dirs",
         type=str,
-        help="Directory containing the source images.",
+        nargs="+",
+        help="Directories containing the source images.",
         required=True,
     )
     dirs_group.add_argument(
@@ -166,11 +183,11 @@ def main():
 
     logging.basicConfig(level=logging.INFO)
 
-    logging.info(f"Copying files from {args.src_dir} to {args.work_dir}...")
+    logging.info(f"Copying files from {', '.join(args.src_dirs)} to {args.work_dir}...")
 
     copy_src_files_to_work_dir_based_on_reference(
         args.work_dir,
-        args.src_dir,
+        args.src_dirs,
         args.ref_dirs,
         args.threshold,
     )
