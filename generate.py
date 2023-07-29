@@ -20,10 +20,11 @@ def generate_images(args: argparse.Namespace):
     start_image_id = get_next_image_id(args.output_dir)
     device = get_device()
     generator = ImageGenerator(
-        api,
-        start_image_id,
-        args.output_dir,
+        api=api,
+        start_image_id=start_image_id,
+        output_dir=args.output_dir,
         model_path=args.model_path,
+        skip_classes=args.skip_classes,
         device=device,
         prompt=args.prompt,
         negative_prompt=args.negative_prompt,
@@ -66,6 +67,7 @@ class ImageGenerator:
         start_image_id: int,
         output_dir: str,
         model_path: str,
+        skip_classes: list[str],
         device: torch.device,
         **kwargs,
     ):
@@ -73,8 +75,9 @@ class ImageGenerator:
         self.image_id = start_image_id
         self.output_dir = output_dir
         self.model_path = model_path
-        self.kwargs = kwargs
+        self.skip_classes = skip_classes
         self.device = device
+        self.kwargs = kwargs
         self.model, self.classes, self.resize_to, self.task_type = load_model(
             self.model_path, device
         )
@@ -86,7 +89,6 @@ class ImageGenerator:
 
         for i, image in enumerate(result.images):
             image = cast(Image.Image, image)
-            pnginfo = self.create_pnginfo(result.info, i)
 
             class_name, _ = predict_classification(
                 image,
@@ -96,8 +98,11 @@ class ImageGenerator:
                 self.task_type,
                 self.device,
             )
-            self.save_image(image, pnginfo, class_name)
+            if class_name in self.skip_classes:
+                continue
 
+            pnginfo = self.create_pnginfo(result.info, i)
+            self.save_image(image, pnginfo, class_name)
             self.image_id += 1
 
     def create_pnginfo(self, api_result_info: dict, i: int) -> PngImagePlugin.PngInfo:
@@ -151,6 +156,12 @@ def main():
         type=int,
         help="The number of times to generate images. "
         "Set to -1 for infinite iterations.",
+    )
+    parser.add_argument(
+        "--skip-classes",
+        nargs="+",
+        default=[],
+        help="The classes to skip saving.",
     )
 
     sd_group = parser.add_argument_group("stable diffusion parameters")
