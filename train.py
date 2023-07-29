@@ -30,7 +30,7 @@ from util import (
 
 def train(
     data_dir: str,
-    model_dir: str,
+    output_path: str,
     task_type: str,
     resize_to: int,
     epochs: int,
@@ -84,7 +84,7 @@ def train(
         logging.info(f"Fold {i + 1} validation loss: {val_loss}")
 
     if best_model is not None:
-        save_model(model_dir, best_model, full_dataset.classes, resize_to)
+        save_model(output_path, best_model, full_dataset.classes, resize_to)
     else:
         raise RuntimeError("No model was trained.")
 
@@ -241,7 +241,7 @@ def validate_epoch(
 
 
 def save_model(
-    model_dir: str, model: nn.Module, classes: list[str], resize_to: int
+    output_path: str, model: nn.Module, classes: list[str], resize_to: int
 ) -> None:
     torch.save(
         {
@@ -249,7 +249,7 @@ def save_model(
             "classes": classes,
             "resize_to": resize_to,
         },
-        os.path.join(model_dir, "model.pt"),
+        output_path,
     )
 
 
@@ -264,8 +264,8 @@ def main() -> None:
         required=True,
     )
     parser.add_argument(
-        "--model-dir",
-        help="Directory to save the trained model.",
+        "--output",
+        help="Path to save the trained model to.",
         required=True,
     )
     parser.add_argument(
@@ -328,7 +328,7 @@ def main() -> None:
     logging.info(f"Training model with data from {args.data_dir}...")
     train(
         args.data_dir,
-        args.model_dir,
+        args.output,
         args.task_type,
         args.resize_to,
         args.epochs,
@@ -340,7 +340,7 @@ def main() -> None:
         device,
     )
 
-    logging.info(f"Model saved to {args.model_dir}.")
+    logging.info(f"Model saved to {args.output}.")
 
 
 if __name__ == "__main__":
