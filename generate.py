@@ -96,7 +96,7 @@ class ImageGenerator:
         pnginfo = PngImagePlugin.PngInfo()
         for key, value in api_result_info.items():
             if isinstance(key, str) and isinstance(value, str):
-                pnginfo.add_text(key, str(value))
+                pnginfo.add_text(key, value)
         pnginfo.add_text("parameters", str(api_result_info["infotexts"][i]))
         return pnginfo
 
