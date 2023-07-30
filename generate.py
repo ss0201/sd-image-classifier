@@ -5,6 +5,7 @@ from typing import cast
 
 import torch
 import webuiapi
+from dotenv import load_dotenv
 from PIL import Image, PngImagePlugin
 
 from classify import load_model, predict_classification
@@ -14,11 +15,17 @@ from util import get_device, get_val_transform
 def generate_images(args: argparse.Namespace):
     os.makedirs(args.output_dir, exist_ok=True)
 
-    api = webuiapi.WebUIApi(host=args.host, port=args.port)
+    api = webuiapi.WebUIApi(host=args.host, port=args.port, use_https=args.https)
+    username = os.environ.get("USERNAME")
+    password = os.environ.get("PASSWORD")
+    if username is not None and password is not None:
+        api.set_auth(username, password)
     if args.sd_model is not None:
         api.util_set_model(args.sd_model)
+
     start_image_id = get_next_image_id(args.output_dir)
     device = get_device()
+
     generator = ImageGenerator(
         api=api,
         start_image_id=start_image_id,
@@ -141,6 +148,11 @@ def main():
         "--port", default=7860, type=int, help="The port number of the web UI."
     )
     parser.add_argument(
+        "--https",
+        action="store_true",
+        help="Use HTTPS to connect to the web UI.",
+    )
+    parser.add_argument(
         "--model-path",
         required=True,
         help="The path to the model to use for classification.",
@@ -197,7 +209,7 @@ def main():
     )
 
     args = parser.parse_args()
-
+    load_dotenv()
     logging.basicConfig(level=logging.INFO)
 
     generate_images(args)
