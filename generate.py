@@ -28,14 +28,17 @@ def generate_images(args: argparse.Namespace):
 
     device = get_device()
 
+    prompt = get_prompt(args.prompt, args.prompt_file)
+    negative_prompt = get_prompt(args.negative_prompt, args.negative_prompt_file)
+
     generator = ImageGenerator(
         api=api,
         output_dir=args.output_dir,
         model_path=args.model_path,
         skip_classes=args.skip_classes,
         device=device,
-        prompt=args.prompt,
-        negative_prompt=args.negative_prompt,
+        prompt=prompt,
+        negative_prompt=negative_prompt,
         seed=args.seed,
         cfg_scale=args.cfg_scale,
         sampler_name=args.sampler_name,
@@ -50,6 +53,16 @@ def generate_images(args: argparse.Namespace):
         logging.info(f"Generating images (iteration {itr})...")
         generator.generate()
         itr += 1
+
+
+def get_prompt(prompt: str | None, prompt_file: str | None):
+    if prompt is not None:
+        return prompt
+    elif prompt_file is not None:
+        with open(prompt_file, "r") as f:
+            return f.read()
+    else:
+        return ""
 
 
 def get_next_image_id(output_dir: str) -> int:
@@ -179,9 +192,20 @@ def main():
 
     sd_group = parser.add_argument_group("stable diffusion parameters")
     sd_group.add_argument(
-        "--prompt", required=True, help="The prompt to generate images from."
+        "--prompt",
+        help="The prompt to generate images from. This overrides --prompt-file.",
     )
-    sd_group.add_argument("--negative-prompt", default="", help="The negative prompt.")
+    sd_group.add_argument(
+        "--prompt-file", help="The file containing the prompt to generate images from."
+    )
+    sd_group.add_argument(
+        "--negative-prompt",
+        help="The negative prompt. This overrides --negative-prompt-file.",
+    )
+    sd_group.add_argument(
+        "--negative-prompt-file",
+        help="The file containing the negative prompt.",
+    )
     sd_group.add_argument("--sd-model", help="The name of the stable diffusion model.")
     sd_group.add_argument("--vae", help="The name of the VAE.")
     sd_group.add_argument(
