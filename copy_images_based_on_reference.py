@@ -9,7 +9,7 @@ from typing import Optional
 import numpy as np
 from PIL import Image, ImageChops, ImageOps
 
-UNMATCHED_DIR_NAME = "_unmatched"
+UNCATEGORIZED_DIR_NAME = "_uncategorized"
 
 
 def copy_src_files_to_work_dir_based_on_reference(
@@ -21,7 +21,7 @@ def copy_src_files_to_work_dir_based_on_reference(
     processed_dirs = [
         os.path.join(work_dir, dir_name)
         for dir_name in [os.path.basename(ref_dir) for ref_dir in reference_dirs]
-        + [UNMATCHED_DIR_NAME]
+        + [UNCATEGORIZED_DIR_NAME]
     ]
 
     file_cache = build_file_cache(src_dirs + processed_dirs + reference_dirs)
@@ -67,7 +67,7 @@ def copy_file(
         src_file_path, reference_dirs, similarity_threshold, file_cache
     )
     dest_dir_name = (
-        UNMATCHED_DIR_NAME
+        UNCATEGORIZED_DIR_NAME
         if matching_reference_dir is None
         else os.path.basename(matching_reference_dir)
     )
