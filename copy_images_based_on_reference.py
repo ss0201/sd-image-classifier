@@ -8,6 +8,7 @@ from typing import Optional
 
 import numpy as np
 from PIL import Image, ImageChops, ImageOps
+from torchvision.datasets.folder import is_image_file
 
 UNCATEGORIZED_DIR_NAME = "_uncategorized"
 
@@ -40,7 +41,7 @@ def copy_src_files_to_work_dir_based_on_reference(
                     processed_dirs,
                 )
                 for src_dir in src_dirs
-                for src_file in os.listdir(src_dir)
+                for src_file in file_cache[src_dir]
             ],
         )
 
@@ -126,7 +127,8 @@ def build_file_cache(dirs: list[str]) -> dict[str, set[str]]:
     cache: dict[str, set[str]] = {}
     for dir in dirs:
         if os.path.isdir(dir):
-            cache[dir] = set(os.listdir(dir))
+            image_files = set(file for file in os.listdir(dir) if is_image_file(file))
+            cache[dir] = image_files
     return cache
 
 
