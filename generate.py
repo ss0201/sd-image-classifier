@@ -26,12 +26,10 @@ def generate_images(args: argparse.Namespace):
         options = {"sd_vae": args.vae}
         api.set_options(options)
 
-    start_image_id = get_next_image_id(args.output_dir)
     device = get_device()
 
     generator = ImageGenerator(
         api=api,
-        start_image_id=start_image_id,
         output_dir=args.output_dir,
         model_path=args.model_path,
         skip_classes=args.skip_classes,
@@ -74,7 +72,6 @@ class ImageGenerator:
     def __init__(
         self,
         api: webuiapi.WebUIApi,
-        start_image_id: int,
         output_dir: str,
         model_path: str,
         skip_classes: list[str],
@@ -82,7 +79,6 @@ class ImageGenerator:
         **kwargs,
     ):
         self.api = api
-        self.image_id = start_image_id
         self.output_dir = output_dir
         self.model_path = model_path
         self.skip_classes = skip_classes
@@ -112,9 +108,9 @@ class ImageGenerator:
                 continue
 
             pnginfo = self.create_pnginfo(result.info, i)
-            self.save_image(image, pnginfo, class_name)
+            image_id = get_next_image_id(self.output_dir)
+            self.save_image(image, pnginfo, class_name, image_id)
             result.parameters
-            self.image_id += 1
 
     def create_pnginfo(self, api_result_info: dict, i: int) -> PngImagePlugin.PngInfo:
         pnginfo = PngImagePlugin.PngInfo()
@@ -129,11 +125,12 @@ class ImageGenerator:
         image: Image.Image,
         pnginfo: PngImagePlugin.PngInfo,
         class_name: str,
+        image_id: int,
     ) -> None:
         class_dir = os.path.join(self.output_dir, class_name)
         os.makedirs(class_dir, exist_ok=True)
 
-        filename = os.path.join(class_dir, f"{self.image_id:06}.png")
+        filename = os.path.join(class_dir, f"{image_id:06}.png")
         image.save(filename, pnginfo=pnginfo)
 
 
