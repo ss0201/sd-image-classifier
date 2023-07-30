@@ -22,6 +22,9 @@ def generate_images(args: argparse.Namespace):
         api.set_auth(username, password)
     if args.sd_model is not None:
         api.util_set_model(args.sd_model)
+    if args.vae is not None:
+        options = {"sd_vae": args.vae}
+        api.set_options(options)
 
     start_image_id = get_next_image_id(args.output_dir)
     device = get_device()
@@ -110,6 +113,7 @@ class ImageGenerator:
 
             pnginfo = self.create_pnginfo(result.info, i)
             self.save_image(image, pnginfo, class_name)
+            result.parameters
             self.image_id += 1
 
     def create_pnginfo(self, api_result_info: dict, i: int) -> PngImagePlugin.PngInfo:
@@ -182,6 +186,7 @@ def main():
     )
     sd_group.add_argument("--negative-prompt", default="", help="The negative prompt.")
     sd_group.add_argument("--sd-model", help="The name of the stable diffusion model.")
+    sd_group.add_argument("--vae", help="The name of the VAE.")
     sd_group.add_argument(
         "--seed",
         default=-1,
